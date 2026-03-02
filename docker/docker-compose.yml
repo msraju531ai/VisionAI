@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  vision-ai:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: vision-ai
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../data:/app/data
+      - ../.env:/app/.env:ro
+    environment:
+      - APP_ENV=production
+    restart: unless-stopped
+
+  # Optional: GPU-enabled variant (uncomment if NVIDIA runtime is available)
+  # vision-ai-gpu:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile
+  #   container_name: vision-ai-gpu
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ../data:/app/data
+  #     - ../.env:/app/.env:ro
+  #   environment:
+  #     - APP_ENV=production
+  #     - USE_GPU=true
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   restart: unless-stopped

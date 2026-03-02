@@ -1,0 +1,155 @@
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --border: #2a2d3a;
+  --text: #e4e6ed;
+  --text-muted: #8b8fa3;
+  --primary: #6366f1;
+  --primary-hover: #818cf8;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --radius: 10px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+/* Navbar */
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  height: 60px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.brand {
+  font-size: 1.3rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.nav-links { display: flex; gap: 1.5rem; }
+.nav-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+}
+.nav-links a:hover, .nav-links a.active { color: var(--primary-hover); }
+
+/* Container */
+.container { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+
+/* Stats Grid */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  text-align: center;
+}
+.stat-value { font-size: 2rem; font-weight: 700; color: var(--primary); }
+.stat-label { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem; }
+.alert-card .stat-value { color: var(--danger); }
+
+/* Panels */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.panel-header h2 { font-size: 1.1rem; font-weight: 600; }
+
+/* Camera Grid */
+.camera-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+.camera-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.camera-card .cam-name { font-weight: 600; }
+.camera-card .cam-loc { font-size: 0.85rem; color: var(--text-muted); }
+.cam-status { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; }
+.cam-status .dot { width: 8px; height: 8px; border-radius: 50%; }
+.dot.online { background: var(--success); }
+.dot.offline { background: var(--danger); }
+.cam-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+
+/* Buttons */
+.btn {
+  padding: 0.45rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn:hover { opacity: 0.85; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-success { background: var(--success); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+
+/* Events Table */
+.events-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.events-table th, .events-table td { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); }
+.events-table th { color: var(--text-muted); font-weight: 500; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.severity-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.severity-critical { background: #3b1111; color: #f87171; }
+.severity-high { background: #3b2211; color: #fb923c; }
+.severity-medium { background: #3b3311; color: #facc15; }
+.severity-low { background: #113b22; color: #4ade80; }
+
+/* Filter Bar */
+.filter-bar { display: flex; gap: 0.75rem; }
+.filter-bar select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* Config Form */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.form-grid label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--text-muted); }
+.form-grid input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.hidden { display: none; }

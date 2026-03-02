@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionAI — Dashboard</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">VisionAI</div>
+    <div class="nav-links">
+      <a href="/" class="active">Dashboard</a>
+      <a href="#" onclick="showSection('cameras')">Cameras</a>
+      <a href="#" onclick="showSection('events')">Events</a>
+      <a href="#" onclick="showSection('config')">Settings</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <!-- Stats Cards -->
+    <section class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-cameras">-</div>
+        <div class="stat-label">Active Cameras</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-events">-</div>
+        <div class="stat-label">Events Today</div>
+      </div>
+      <div class="stat-card alert-card">
+        <div class="stat-value" id="stat-alerts">-</div>
+        <div class="stat-label">Unacknowledged Alerts</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-anomalies">-</div>
+        <div class="stat-label">Anomalies (Last Hour)</div>
+      </div>
+    </section>
+
+    <!-- Pipeline Controls -->
+    <section class="panel" id="section-cameras">
+      <div class="panel-header">
+        <h2>Camera Feeds & Pipeline</h2>
+        <div>
+          <button class="btn btn-success" onclick="startAll()">Start All</button>
+          <button class="btn btn-danger" onclick="stopAll()">Stop All</button>
+        </div>
+      </div>
+      <div id="camera-list" class="camera-grid"></div>
+    </section>
+
+    <!-- Recent Events -->
+    <section class="panel" id="section-events">
+      <div class="panel-header">
+        <h2>Recent Events</h2>
+        <div class="filter-bar">
+          <select id="filter-type" onchange="loadEvents()">
+            <option value="">All Types</option>
+            <option value="unauthorized_presence">Unauthorized Presence</option>
+            <option value="unauthorized_absence">Unauthorized Absence</option>
+            <option value="idle_time">Idle Time</option>
+            <option value="shift_deviation">Shift Deviation</option>
+            <option value="supervisor_walkthrough">Supervisor Walkthrough</option>
+          </select>
+          <select id="filter-severity" onchange="loadEvents()">
+            <option value="">All Severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+      </div>
+      <table class="events-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Camera</th>
+            <th>Type</th>
+            <th>Severity</th>
+            <th>Description</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="events-body"></tbody>
+      </table>
+    </section>
+
+    <!-- Config -->
+    <section class="panel hidden" id="section-config">
+      <h2>Detection Thresholds</h2>
+      <form id="config-form" onsubmit="saveConfig(event)">
+        <div class="form-grid">
+          <label>Idle Threshold (seconds)
+            <input type="number" id="cfg-idle" min="30" max="3600">
+          </label>
+          <label>Shift Deviation Threshold
+            <input type="number" id="cfg-deviation" min="0" max="1" step="0.05">
+          </label>
+          <label>Alert Cooldown (seconds)
+            <input type="number" id="cfg-cooldown" min="60" max="3600">
+          </label>
+          <label>YOLO Confidence
+            <input type="number" id="cfg-confidence" min="0.1" max="1" step="0.05">
+          </label>
+          <label>Frame Sample Interval (seconds)
+            <input type="number" id="cfg-interval" min="1" max="30">
+          </label>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Thresholds</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
