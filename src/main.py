@@ -17,7 +17,7 @@ from src.api.dependencies import (
 )
 from src.core.pipeline import init_pipeline_manager
 
-from src.api.routes import cameras, zones, events, alerts, shifts, dashboard, config, summaries, pipeline
+from src.api.routes import cameras, zones, events, alerts, shifts, dashboard, config, summaries, pipeline, demo
 
 
 @asynccontextmanager
@@ -65,6 +65,7 @@ app.include_router(shifts.router, prefix="/api")
 app.include_router(config.router, prefix="/api")
 app.include_router(summaries.router, prefix="/api")
 app.include_router(pipeline.router, prefix="/api")
+app.include_router(demo.router)
 
 
 @app.get("/api/health")

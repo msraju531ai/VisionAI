@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionAI — Employee Identification Demo</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">VisionAI</div>
+    <div class="nav-links">
+      <a href="/">Dashboard</a>
+      <a href="/demo" class="active">Employee ID Demo</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Employee Registration</h2>
+      </div>
+      <form class="form-grid" action="/demo/employees" method="post" enctype="multipart/form-data">
+        <label>Employee Name
+          <input type="text" name="name" required>
+        </label>
+        <label>Photo (jpg/png)
+          <input type="file" name="photo" accept="image/*" required>
+        </label>
+        <div>
+          <button type="submit" class="btn btn-primary">Register Employee</button>
+        </div>
+      </form>
+
+      <div style="margin-top:16px">
+        <h3>Registered Employees</h3>
+        <table class="events-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in employees %}
+            <tr>
+              <td>{{ e.name }}</td>
+              <td>{{ e.created_at }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Video Upload</h2>
+      </div>
+      <form class="form-grid" action="/demo/videos" method="post" enctype="multipart/form-data">
+        <label>Video File (mp4/avi)
+          <input type="file" name="video" accept="video/mp4,video/x-msvideo" required>
+        </label>
+        <div>
+          <button type="submit" class="btn btn-success">Upload & Process</button>
+        </div>
+      </form>
+
+      <div style="margin-top:16px">
+        <h3>Uploaded Videos</h3>
+        <table class="events-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Filename</th>
+              <th>Status</th>
+              <th>Frames Sampled</th>
+              <th>Started</th>
+              <th>Finished</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in videos %}
+            <tr>
+              <td>{{ v.id }}</td>
+              <td>{{ v.original_filename }}</td>
+              <td>{{ v.status }}</td>
+              <td>{{ v.processed_frames }}</td>
+              <td>{{ v.started_at or '' }}</td>
+              <td>{{ v.finished_at or '' }}</td>
+              <td>{{ v.error_message or '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Detections</h2>
+      </div>
+      <table class="events-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Employee</th>
+            <th>Video</th>
+            <th>Timestamp (s)</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in detections %}
+          <tr>
+            <td>{{ d.created_at }}</td>
+            <td>{{ d.employee_name }}</td>
+            <td>#{{ d.video_id }} — {{ d.video_filename }}</td>
+            <td>{{ '%.2f'|format(d.timestamp_seconds) }}</td>
+            <td>{{ '%.3f'|format(d.confidence) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

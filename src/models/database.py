@@ -122,3 +122,51 @@ class PipelineRun(Base):
     anomalies_found = Column(Integer, default=0)
     status = Column(Enum("running", "completed", "failed", name="pipeline_status_enum"), default="running")
     error_message = Column(Text, nullable=True)
+
+
+class Employee(Base):
+    __tablename__ = "demo_employees"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(128), nullable=False, unique=True, index=True)
+    image_path = Column(String(512), nullable=True)
+    embedding = Column(JSON, nullable=False, comment="Face embedding as list[float]")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    detections = relationship("DemoDetection", back_populates="employee", cascade="all, delete-orphan")
+
+
+class DemoVideo(Base):
+    __tablename__ = "demo_videos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    original_filename = Column(String(256), nullable=False)
+    video_path = Column(String(512), nullable=False)
+    status = Column(
+        Enum("uploaded", "processing", "completed", "failed", name="demo_video_status_enum"),
+        default="uploaded",
+        nullable=False,
+    )
+    error_message = Column(Text, nullable=True)
+    processed_frames = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    detections = relationship("DemoDetection", back_populates="video", cascade="all, delete-orphan")
+
+
+class DemoDetection(Base):
+    __tablename__ = "demo_detections"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    video_id = Column(Integer, ForeignKey("demo_videos.id"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("demo_employees.id"), nullable=False, index=True)
+    timestamp_seconds = Column(Float, nullable=False)
+    confidence = Column(Float, nullable=False)
+    frame_index = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    metadata_json = Column(JSON, nullable=True)
+
+    video = relationship("DemoVideo", back_populates="detections")
+    employee = relationship("Employee", back_populates="detections")
