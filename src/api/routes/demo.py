@@ -42,13 +42,29 @@ async def demo_page(
     videos = (await db.execute(select(DemoVideo).order_by(DemoVideo.created_at.desc()))).scalars().all()
 
     page_size = 10
-    total = (await db.execute(select(func.count(DemoDetection.id)))).scalar() or 0
+    ranked = (
+        select(
+            DemoDetection.id.label("det_id"),
+            func.row_number()
+            .over(
+                partition_by=DemoDetection.video_id,
+                order_by=DemoDetection.created_at.desc(),
+            )
+            .label("rn"),
+        )
+        .subquery()
+    )
+
+    filtered = select(ranked.c.det_id).where(ranked.c.rn <= 5).subquery()
+
+    total = (await db.execute(select(func.count()).select_from(filtered))).scalar() or 0
     total_pages = max(1, (total + page_size - 1) // page_size)
     page = min(page, total_pages)
     offset = (page - 1) * page_size
 
     det_stmt = (
         select(DemoDetection, Employee, DemoVideo)
+        .join(filtered, filtered.c.det_id == DemoDetection.id)
         .join(Employee, DemoDetection.employee_id == Employee.id)
         .join(DemoVideo, DemoDetection.video_id == DemoVideo.id)
         .order_by(DemoDetection.created_at.desc())

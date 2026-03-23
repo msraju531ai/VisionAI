@@ -97,8 +97,8 @@
               <td>{{ v.original_filename }}</td>
               <td>{{ v.status }}</td>
               <td>{{ v.processed_frames }}</td>
-              <td>{{ v.started_at or '' }}</td>
-              <td>{{ v.finished_at or '' }}</td>
+              <td>{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
+              <td>{{ v.finished_at.strftime('%Y-%m-%d %H:%M:%S') if v.finished_at else '' }}</td>
               <td>{{ v.error_message or '' }}</td>
             </tr>
             {% endfor %}
@@ -125,7 +125,7 @@
         <tbody>
           {% for d in detections %}
           <tr>
-            <td>{{ d.created_at }}</td>
+            <td>{{ d.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
             <td>{{ d.employee_name }}</td>
             <td>#{{ d.video_id }} — {{ d.video_filename }}</td>
             <td>{{ '%.2f'|format(d.timestamp_seconds) }}</td>
