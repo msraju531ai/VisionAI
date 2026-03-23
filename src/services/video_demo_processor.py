@@ -12,6 +12,7 @@ from sqlalchemy import select
 from src.models.db_session import async_session_factory
 from src.models.database import DemoVideo, DemoDetection, Employee
 from src.services.employee_identifier import EmployeeIdentifier
+from src.services.centralized_detection_service import CentralizedDetectionService
 
 
 class VideoDemoProcessor:
@@ -24,6 +25,7 @@ class VideoDemoProcessor:
         self._identifier = identifier or EmployeeIdentifier()
         self._frame_sample_interval_seconds = frame_sample_interval_seconds
         self._similarity_threshold = similarity_threshold
+        self._central = CentralizedDetectionService(dedup_seconds=60)
 
     def start_background(self, demo_video_id: int) -> None:
         asyncio.create_task(self.process_video(demo_video_id))
@@ -109,6 +111,18 @@ class VideoDemoProcessor:
                         )
                         fut.result(timeout=30)
 
+                        det_ts = datetime.datetime.utcnow()
+                        fut = asyncio.run_coroutine_threadsafe(
+                            self._save_central_detection(
+                                employee_id=emp_id,
+                                camera_id=0,
+                                timestamp=det_ts,
+                                confidence=score,
+                            ),
+                            loop,
+                        )
+                        fut.result(timeout=30)
+
                 processed += 1
                 if processed % 25 == 0:
                     fut = asyncio.run_coroutine_threadsafe(
@@ -164,6 +178,23 @@ class VideoDemoProcessor:
                 metadata_json=metadata,
             )
             db.add(det)
+            await db.commit()
+
+    async def _save_central_detection(
+        self,
+        employee_id: int,
+        camera_id: int | None,
+        timestamp: datetime.datetime,
+        confidence: float,
+    ) -> None:
+        async with async_session_factory() as db:
+            await self._central.record_detection(
+                db,
+                employee_id=employee_id,
+                camera_id=camera_id,
+                timestamp=timestamp,
+                confidence=confidence,
+            )
             await db.commit()
 
     async def _update_progress(self, demo_video_id: int, processed_frames: int) -> None:

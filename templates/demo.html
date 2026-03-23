@@ -37,6 +37,8 @@
         <table class="events-table">
           <thead>
             <tr>
+              <th>SNO</th>
+              <th>Photo</th>
               <th>Name</th>
               <th>Created</th>
             </tr>
@@ -44,8 +46,16 @@
           <tbody>
             {% for e in employees %}
             <tr>
+              <td>{{ loop.index }}</td>
+              <td>
+                <img
+                  src="/demo/employees/{{ e.id }}/photo"
+                  alt="{{ e.name }}"
+                  style="width:50px; height:50px; border-radius:10%; object-fit:cover; display:block;"
+                >
+              </td>
               <td>{{ e.name }}</td>
-              <td>{{ e.created_at }}</td>
+              <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -97,7 +107,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="detections">
       <div class="panel-header">
         <h2>Detections</h2>
       </div>
@@ -109,6 +119,7 @@
             <th>Video</th>
             <th>Timestamp (s)</th>
             <th>Confidence</th>
+            <th>Clip</th>
           </tr>
         </thead>
         <tbody>
@@ -119,11 +130,133 @@
             <td>#{{ d.video_id }} — {{ d.video_filename }}</td>
             <td>{{ '%.2f'|format(d.timestamp_seconds) }}</td>
             <td>{{ '%.3f'|format(d.confidence) }}</td>
+            <td>
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                data-video-id="{{ d.video_id }}"
+                data-ts="{{ d.timestamp_seconds }}"
+                onclick="openClipFromBtn(this)"
+              >
+                View (5s)
+              </button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px; align-items:center;">
+        {% set cur = page %}
+        {% set total = total_pages %}
+
+        <a class="btn btn-sm" href="/demo?page={{ 1 if cur <= 1 else cur - 1 }}#detections" style="text-decoration:none; color: var(--text);">&lt; previous</a>
+
+        {% set start = 1 if cur - 2 < 1 else cur - 2 %}
+        {% set end = total if cur + 2 > total else cur + 2 %}
+
+        {% for p in range(start, end + 1) %}
+          {% if p == cur %}
+            <span class="btn btn-primary btn-sm" style="cursor:default; color: #fff;">{{ p }}</span>
+          {% else %}
+            <a class="btn btn-sm" href="/demo?page={{ p }}#detections" style="text-decoration:none; color: var(--text);">{{ p }}</a>
+          {% endif %}
+        {% endfor %}
+
+        <a class="btn btn-sm" href="/demo?page={{ total if cur >= total else cur + 1 }}#detections" style="text-decoration:none; color: var(--text);">next &gt;</a>
+      </div>
     </section>
   </main>
+
+  <div id="clip-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999;">
+    <div style="max-width:900px; margin:5vh auto; background:var(--panel); padding:16px; border-radius:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <div id="clip-title" style="font-weight:600;">Video Clip</div>
+        <button type="button" class="btn btn-danger btn-sm" onclick="closeClip()">Close</button>
+      </div>
+      <div style="margin-top:12px;">
+        <video id="clip-player" controls style="width:100%; max-height:70vh; background:#000;"></video>
+        <div style="margin-top:8px; font-size:0.9em; opacity:0.9;">
+          <span id="clip-info"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let clipTimer = null;
+    let clipStopAt = null;
+
+    function openClipFromBtn(btn) {
+      const videoId = parseInt(btn.dataset.videoId, 10);
+      const tSeconds = parseFloat(btn.dataset.ts);
+      openClip(videoId, tSeconds);
+    }
+
+    function openClip(videoId, tSeconds) {
+      const modal = document.getElementById('clip-modal');
+      const player = document.getElementById('clip-player');
+      const title = document.getElementById('clip-title');
+      const info = document.getElementById('clip-info');
+
+      if (clipTimer) {
+        clearInterval(clipTimer);
+        clipTimer = null;
+      }
+
+      title.textContent = `Video #${videoId} clip`;
+      info.textContent = `Starting at ${tSeconds.toFixed(2)}s, playing 5s`;
+
+      clipStopAt = tSeconds + 5.0;
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+
+      player.src = `/demo/videos/${videoId}/file`;
+      modal.style.display = 'block';
+
+      const onLoaded = () => {
+        try {
+          player.currentTime = Math.max(0, tSeconds);
+        } catch (_) {}
+
+        const doPlay = () => player.play().catch(() => {});
+        if (Math.abs(player.currentTime - tSeconds) > 0.05) {
+          player.onseeked = () => {
+            player.onseeked = null;
+            doPlay();
+          };
+        } else {
+          doPlay();
+        }
+
+        clipTimer = setInterval(() => {
+          if (clipStopAt !== null && player.currentTime >= clipStopAt) {
+            player.pause();
+            clearInterval(clipTimer);
+            clipTimer = null;
+          }
+        }, 250);
+      };
+
+      player.onloadedmetadata = onLoaded;
+    }
+
+    function closeClip() {
+      const modal = document.getElementById('clip-modal');
+      const player = document.getElementById('clip-player');
+
+      if (clipTimer) {
+        clearInterval(clipTimer);
+        clipTimer = null;
+      }
+
+      clipStopAt = null;
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+      modal.style.display = 'none';
+    }
+  </script>
 </body>
 </html>

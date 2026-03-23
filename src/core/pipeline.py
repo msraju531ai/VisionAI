@@ -21,6 +21,7 @@ from src.services.anomaly_detector import AnomalyDetector
 from src.services.event_logger import EventLogger
 from src.services.alert_service import AlertService
 from src.core.scheduler import ShiftScheduler
+from src.services.rtsp_employee_matcher import RTSPEmployeeMatcher
 
 
 class PipelineManager:
@@ -43,6 +44,8 @@ class PipelineManager:
         self._zones = zone_manager
         self._anomaly = anomaly_detector
         self._scheduler = shift_scheduler
+
+        self._employee_matcher = RTSPEmployeeMatcher()
 
         self._tasks: dict[int, asyncio.Task] = {}
         self._stats: dict[int, dict] = {}
@@ -98,6 +101,16 @@ class PipelineManager:
                 detections = self._detector.detect(processed)
                 stats["frames_processed"] += 1
                 stats["detections"] += len(detections)
+
+                if detections:
+                    asyncio.create_task(
+                        self._employee_matcher.process_detections(
+                            camera_id=camera_id,
+                            frame_bgr=frame,
+                            detections=detections,
+                            timestamp_unix=timestamp,
+                        )
+                    )
 
                 tracked = self._activity.update(camera_id, detections, timestamp)
 

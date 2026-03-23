@@ -170,3 +170,60 @@ class DemoDetection(Base):
 
     video = relationship("DemoVideo", back_populates="detections")
     employee = relationship("Employee", back_populates="detections")
+
+
+class EmployeeDetection(Base):
+    __tablename__ = "employee_detections"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    employee_id = Column(Integer, ForeignKey("demo_employees.id"), nullable=False, index=True)
+    camera_id = Column(Integer, nullable=True, index=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    confidence = Column(Float, nullable=False)
+
+    employee = relationship("Employee")
+
+
+class EmployeeAttendance(Base):
+    __tablename__ = "employee_attendance"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    employee_id = Column(Integer, ForeignKey("demo_employees.id"), nullable=False, index=True)
+    date = Column(String(10), nullable=False, index=True, comment="YYYY-MM-DD")
+    first_seen = Column(DateTime, nullable=False)
+    last_seen = Column(DateTime, nullable=False)
+    total_minutes = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    employee = relationship("Employee")
+
+
+class WorkSchedule(Base):
+    __tablename__ = "work_schedules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    employee_id = Column(Integer, ForeignKey("demo_employees.id"), nullable=False, unique=True, index=True)
+    expected_start_time = Column(String(5), nullable=False, comment="HH:MM")
+    expected_end_time = Column(String(5), nullable=False, comment="HH:MM")
+    grace_minutes = Column(Integer, default=10)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    employee = relationship("Employee")
+
+
+class AttendanceCompliance(Base):
+    __tablename__ = "attendance_compliance"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    employee_id = Column(Integer, ForeignKey("demo_employees.id"), nullable=False, index=True)
+    date = Column(String(10), nullable=False, index=True, comment="YYYY-MM-DD")
+    status = Column(
+        Enum("compliant", "late", "early_exit", "absent", name="attendance_status_enum"),
+        nullable=False,
+        default="absent",
+    )
+    deviation_minutes = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    employee = relationship("Employee")

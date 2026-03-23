@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionAI — Attendance</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">VisionAI</div>
+    <div class="nav-links">
+      <a href="/">Dashboard</a>
+      <a href="/demo">Employee ID Demo</a>
+      <a href="/attendance" class="active">Attendance</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Daily Attendance — {{ date }}</h2>
+      </div>
+
+      <table class="events-table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Check-in</th>
+            <th>Check-out</th>
+            <th>Total (min)</th>
+            <th>Compliance</th>
+            <th>Deviation (min)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+          <tr>
+            <td>{{ it.employee_name }}</td>
+            <td>{{ it.check_in or '' }}</td>
+            <td>{{ it.check_out or '' }}</td>
+            <td>{{ it.total_minutes }}</td>
+            <td>{{ it.status }}</td>
+            <td>{{ it.deviation_minutes }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

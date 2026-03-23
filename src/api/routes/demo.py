@@ -5,10 +5,10 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.db_session import get_db
@@ -33,16 +33,27 @@ def _ensure_dirs() -> None:
 
 
 @router.get("/demo", response_class=HTMLResponse)
-async def demo_page(request: Request, db: AsyncSession = Depends(get_db)):
+async def demo_page(
+    request: Request,
+    page: int = Query(1, ge=1),
+    db: AsyncSession = Depends(get_db),
+):
     employees = (await db.execute(select(Employee).order_by(Employee.created_at.desc()))).scalars().all()
     videos = (await db.execute(select(DemoVideo).order_by(DemoVideo.created_at.desc()))).scalars().all()
+
+    page_size = 10
+    total = (await db.execute(select(func.count(DemoDetection.id)))).scalar() or 0
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = min(page, total_pages)
+    offset = (page - 1) * page_size
 
     det_stmt = (
         select(DemoDetection, Employee, DemoVideo)
         .join(Employee, DemoDetection.employee_id == Employee.id)
         .join(DemoVideo, DemoDetection.video_id == DemoVideo.id)
         .order_by(DemoDetection.created_at.desc())
-        .limit(200)
+        .offset(offset)
+        .limit(page_size)
     )
     det_rows = (await db.execute(det_stmt)).all()
     detections = [
@@ -64,6 +75,8 @@ async def demo_page(request: Request, db: AsyncSession = Depends(get_db)):
             "employees": employees,
             "videos": videos,
             "detections": detections,
+            "page": page,
+            "total_pages": total_pages,
         },
     )
 
@@ -105,6 +118,59 @@ async def register_employee(
     await db.commit()
 
     return RedirectResponse(url="/demo", status_code=303)
+
+
+@router.get("/demo/employees/{employee_id}/photo")
+async def get_employee_photo(employee_id: int, db: AsyncSession = Depends(get_db)):
+    emp = (await db.execute(select(Employee).where(Employee.id == employee_id))).scalar_one_or_none()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    if not emp.image_path:
+        raise HTTPException(status_code=404, detail="Employee photo not available")
+
+    path = Path(emp.image_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Employee photo missing")
+
+    try:
+        base = _EMP_DIR.resolve()
+        target = path.resolve()
+        if base not in target.parents and base != target:
+            raise HTTPException(status_code=403, detail="Invalid image path")
+    except RuntimeError:
+        raise HTTPException(status_code=403, detail="Invalid image path")
+
+    ext = target.suffix.lower()
+    media_type = "image/jpeg"
+    if ext == ".png":
+        media_type = "image/png"
+    elif ext == ".webp":
+        media_type = "image/webp"
+
+    return FileResponse(str(target), media_type=media_type)
+
+
+@router.get("/demo/videos/{video_id}/file")
+async def get_demo_video_file(video_id: int, db: AsyncSession = Depends(get_db)):
+    video = (await db.execute(select(DemoVideo).where(DemoVideo.id == video_id))).scalar_one_or_none()
+    if video is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    path = Path(video.video_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Video file missing")
+
+    try:
+        base = _VID_DIR.resolve()
+        target = path.resolve()
+        if base not in target.parents and base != target:
+            raise HTTPException(status_code=403, detail="Invalid video path")
+    except RuntimeError:
+        raise HTTPException(status_code=403, detail="Invalid video path")
+
+    ext = target.suffix.lower()
+    media_type = "video/mp4" if ext == ".mp4" else "video/x-msvideo"
+    return FileResponse(str(target), media_type=media_type)
 
 
 @router.post("/demo/videos")
