@@ -9,7 +9,7 @@ import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.db_session import get_db
@@ -32,6 +32,18 @@ _VID_DIR = _BASE_DIR / "videos"
 def _ensure_dirs() -> None:
     _EMP_DIR.mkdir(parents=True, exist_ok=True)
     _VID_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _safe_unlink(path: Path, allowed_base: Path) -> None:
+    try:
+        base = allowed_base.resolve()
+        target = path.resolve()
+        if base not in target.parents and base != target:
+            return
+        if target.exists() and target.is_file():
+            target.unlink()
+    except Exception:
+        return
 
 
 @router.get("/demo", response_class=HTMLResponse)
@@ -199,7 +211,7 @@ async def get_employee_photo(employee_id: int, db: AsyncSession = Depends(get_db
     elif ext == ".webp":
         media_type = "image/webp"
 
-    return FileResponse(str(target), media_type=media_type)
+    return FileResponse(str(target), media_type=media_type, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/demo/videos/{video_id}/file")
@@ -223,6 +235,68 @@ async def get_demo_video_file(video_id: int, db: AsyncSession = Depends(get_db))
     ext = target.suffix.lower()
     media_type = "video/mp4" if ext == ".mp4" else "video/x-msvideo"
     return FileResponse(str(target), media_type=media_type)
+
+
+@router.post("/demo/employees/clear")
+async def clear_all_employees(db: AsyncSession = Depends(get_db)):
+    """Delete all registered employees, their photos, and all their detections."""
+    _ensure_dirs()
+    employees = (await db.execute(select(Employee))).scalars().all()
+    for emp in employees:
+        if emp.image_path:
+            _safe_unlink(Path(emp.image_path), _EMP_DIR)
+    await db.execute(delete(DemoDetection))
+    await db.execute(delete(Employee))
+    await db.commit()
+    return RedirectResponse(url="/demo", status_code=303)
+
+
+@router.post("/demo/employees/{employee_id}/delete")
+async def delete_employee(employee_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a single employee, their photo, and all their detections."""
+    emp = (await db.execute(select(Employee).where(Employee.id == employee_id))).scalar_one_or_none()
+    if emp:
+        if emp.image_path:
+            _safe_unlink(Path(emp.image_path), _EMP_DIR)
+        await db.execute(delete(DemoDetection).where(DemoDetection.employee_id == employee_id))
+        await db.execute(delete(Employee).where(Employee.id == employee_id))
+        await db.commit()
+    return RedirectResponse(url="/demo", status_code=303)
+
+
+@router.post("/demo/videos/clear")
+async def clear_all_videos(db: AsyncSession = Depends(get_db)):
+    """Delete all uploaded videos, their files, and all detections."""
+    _ensure_dirs()
+    videos = (await db.execute(select(DemoVideo))).scalars().all()
+    for vid in videos:
+        if vid.video_path:
+            _safe_unlink(Path(vid.video_path), _VID_DIR)
+    await db.execute(delete(DemoDetection))
+    await db.execute(delete(DemoVideo))
+    await db.commit()
+    return RedirectResponse(url="/demo", status_code=303)
+
+
+@router.post("/demo/videos/{video_id}/delete")
+async def delete_video(video_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a single video, its file, and its detections."""
+    vid = (await db.execute(select(DemoVideo).where(DemoVideo.id == video_id))).scalar_one_or_none()
+    if vid:
+        if vid.video_path:
+            _safe_unlink(Path(vid.video_path), _VID_DIR)
+        await db.execute(delete(DemoDetection).where(DemoDetection.video_id == video_id))
+        await db.execute(delete(DemoVideo).where(DemoVideo.id == video_id))
+        await db.commit()
+    return RedirectResponse(url="/demo", status_code=303)
+
+
+@router.post("/demo/detections/clear")
+async def clear_all_detections(db: AsyncSession = Depends(get_db)):
+    """Delete all detection records (keeps employees and videos intact)."""
+    await db.execute(delete(DemoDetection))
+    await db.commit()
+    return RedirectResponse(url="/demo", status_code=303)
 
 
 @router.post("/demo/videos")

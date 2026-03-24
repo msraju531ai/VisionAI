@@ -43,7 +43,13 @@
       </form>
 
       <div style="margin-top:16px">
-        <h3>Registered Employees</h3>
+        <div class="panel-header" style="margin-bottom:8px;">
+          <h3 style="margin:0;">Registered Employees</h3>
+          <form action="/demo/employees/clear" method="post"
+                onsubmit="return confirm('Delete ALL employees and their detections?');">
+            <!-- <button type="submit" class="btn btn-danger btn-sm">Remove All</button> -->
+          </form>
+        </div>
         <table class="events-table">
           <thead>
             <tr>
@@ -51,23 +57,38 @@
               <th>Photo</th>
               <th>Name</th>
               <th>Created</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            {% for e in employees %}
-            <tr>
-              <td>{{ loop.index }}</td>
-              <td>
-                <img
-                  src="/demo/employees/{{ e.id }}/photo"
-                  alt="{{ e.name }}"
-                  style="width:50px; height:50px; border-radius:10%; object-fit:cover; display:block;"
-                >
-              </td>
-              <td>{{ e.name }}</td>
-              <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-            </tr>
-            {% endfor %}
+            {% if employees %}
+              {% for e in employees %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>
+                  <img
+                    src="/demo/employees/{{ e.id }}/photo?v={{ e.created_at.timestamp()|int }}"
+                    alt="{{ e.name }}"
+                    style="width:50px; height:50px; border-radius:10%; object-fit:cover; display:block;"
+                  >
+                </td>
+                <td>{{ e.name }}</td>
+                <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>
+                  <form action="/demo/employees/{{ e.id }}/delete" method="post"
+                        onsubmit="return confirm('Delete employee {{ e.name }} and all their detections?');">
+                    <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="5" style="text-align:center; opacity:0.5; padding:20px 0;">
+                  No employees registered yet. Use the form above to register your first employee.
+                </td>
+              </tr>
+            {% endif %}
           </tbody>
         </table>
       </div>
@@ -86,7 +107,7 @@
         </div>
       </form>
 
-      <div style="margin-top:12px; opacity:0.9;">Or download from YouTube URL</div>
+      <!-- <div style="margin-top:12px; opacity:0.9;">Or download from YouTube URL</div>
       <form class="form-grid" action="/demo/videos/youtube" method="post">
         <label>YouTube URL
           <input type="url" name="youtube_url" placeholder="https://www.youtube.com/shorts/..." required>
@@ -94,10 +115,16 @@
         <div>
           <button type="submit" class="btn btn-primary">Download & Process</button>
         </div>
-      </form>
+      </form> -->
 
       <div style="margin-top:16px">
-        <h3>Uploaded Videos</h3>
+        <div class="panel-header" style="margin-bottom:8px;">
+          <h3 style="margin:0;">Uploaded Videos</h3>
+          <form action="/demo/videos/clear" method="post"
+                onsubmit="return confirm('Delete ALL videos and their detections?');">
+            <!-- <button type="submit" class="btn btn-danger btn-sm">Remove All</button> -->
+          </form>
+        </div>
         <table class="events-table">
           <thead>
             <tr>
@@ -108,20 +135,35 @@
               <th>Started</th>
               <th>Finished</th>
               <th>Error</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            {% for v in videos %}
-            <tr>
-              <td>{{ v.id }}</td>
-              <td>{{ v.original_filename }}</td>
-              <td>{{ v.status }}</td>
-              <td>{{ v.processed_frames }}</td>
-              <td>{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
-              <td>{{ v.finished_at.strftime('%Y-%m-%d %H:%M:%S') if v.finished_at else '' }}</td>
-              <td>{{ v.error_message or '' }}</td>
-            </tr>
-            {% endfor %}
+            {% if videos %}
+              {% for v in videos %}
+              <tr>
+                <td>{{ v.id }}</td>
+                <td>{{ v.original_filename }}</td>
+                <td>{{ v.status }}</td>
+                <td>{{ v.processed_frames }}</td>
+                <td>{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
+                <td>{{ v.finished_at.strftime('%Y-%m-%d %H:%M:%S') if v.finished_at else '' }}</td>
+                <td>{{ v.error_message or '' }}</td>
+                <td>
+                  <form action="/demo/videos/{{ v.id }}/delete" method="post"
+                        onsubmit="return confirm('Delete video {{ v.original_filename }} and its detections?');">
+                    <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="8" style="text-align:center; opacity:0.5; padding:20px 0;">
+                  No videos uploaded yet. Use the form above to upload or download a video.
+                </td>
+              </tr>
+            {% endif %}
           </tbody>
         </table>
       </div>
@@ -130,6 +172,10 @@
     <section class="panel" id="detections">
       <div class="panel-header">
         <h2>Detections</h2>
+        <form action="/demo/detections/clear" method="post"
+              onsubmit="return confirm('Delete ALL detection records?');">
+          <button type="submit" class="btn btn-danger btn-sm">Clear All</button>
+        </form>
       </div>
       <table class="events-table">
         <thead>
@@ -143,29 +189,38 @@
           </tr>
         </thead>
         <tbody>
-          {% for d in detections %}
-          <tr>
-            <td>{{ d.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-            <td>{{ d.employee_name }}</td>
-            <td>#{{ d.video_id }} — {{ d.video_filename }}</td>
-            <td>{{ '%.2f'|format(d.timestamp_seconds) }}</td>
-            <td>{{ '%.3f'|format(d.confidence) }}</td>
-            <td>
-              <button
-                type="button"
-                class="btn btn-primary btn-sm"
-                data-video-id="{{ d.video_id }}"
-                data-ts="{{ d.timestamp_seconds }}"
-                onclick="openClipFromBtn(this)"
-              >
-                View (5s)
-              </button>
-            </td>
-          </tr>
-          {% endfor %}
+          {% if detections %}
+            {% for d in detections %}
+            <tr>
+              <td>{{ d.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+              <td>{{ d.employee_name }}</td>
+              <td>#{{ d.video_id }} — {{ d.video_filename }}</td>
+              <td>{{ '%.2f'|format(d.timestamp_seconds) }}</td>
+              <td>{{ '%.3f'|format(d.confidence) }}</td>
+              <td>
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  data-video-id="{{ d.video_id }}"
+                  data-ts="{{ d.timestamp_seconds }}"
+                  onclick="openClipFromBtn(this)"
+                >
+                  View (5s)
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="6" style="text-align:center; opacity:0.5; padding:20px 0;">
+                No detections yet. Upload a video and register employees to see results here.
+              </td>
+            </tr>
+          {% endif %}
         </tbody>
       </table>
 
+      {% if detections %}
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px; align-items:center;">
         {% set cur = page %}
         {% set total = total_pages %}
@@ -185,6 +240,7 @@
 
         <a class="btn btn-sm" href="/demo?page={{ total if cur >= total else cur + 1 }}#detections" style="text-decoration:none; color: var(--text);">next &gt;</a>
       </div>
+      {% endif %}
     </section>
   </main>
 

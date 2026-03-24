@@ -14,55 +14,70 @@ class FaceEmbeddingResult:
 
 
 class EmployeeIdentifier:
-    """Lightweight face detection + embedding + cosine similarity matcher.
+    """Face detection + deep-learning embedding + cosine similarity matcher.
 
-    This is intentionally self-contained for demo usage and does not affect the RTSP pipeline.
+    Uses DeepFace (Facenet model) for reliable face recognition across
+    varying lighting, angles, and video quality.
     """
 
-    def __init__(self, face_size: int = 64):
-        self._face_size = face_size
-        self._cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        )
+    # Lazy-load DeepFace to avoid slow import at startup
+    _deepface = None
 
-    def _largest_face(self, faces: np.ndarray) -> Optional[tuple[int, int, int, int]]:
-        if faces is None or len(faces) == 0:
-            return None
-        faces_sorted = sorted(faces, key=lambda f: int(f[2]) * int(f[3]), reverse=True)
-        x, y, w, h = faces_sorted[0]
-        return int(x), int(y), int(w), int(h)
+    def __init__(self, model_name: str = "Facenet"):
+        self._model_name = model_name
+
+    @classmethod
+    def _get_deepface(cls):
+        if cls._deepface is None:
+            from deepface import DeepFace  # noqa: PLC0415
+            cls._deepface = DeepFace
+        return cls._deepface
 
     def detect_and_embed(self, bgr_image: np.ndarray) -> Optional[FaceEmbeddingResult]:
         if bgr_image is None or bgr_image.size == 0:
             return None
 
-        gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
-        faces = self._cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
-        bbox = self._largest_face(faces)
-        if bbox is None:
+        try:
+            DeepFace = self._get_deepface()
+            # DeepFace expects BGR or RGB; pass enforce_detection=False so it
+            # doesn't raise when no face is found.
+            results = DeepFace.represent(
+                img_path=bgr_image,
+                model_name=self._model_name,
+                enforce_detection=False,
+                detector_backend="opencv",
+            )
+            if not results:
+                return None
+
+            # Pick the highest-confidence (or largest) face
+            best = max(results, key=lambda r: r.get("face_confidence", 0.0))
+
+            if best.get("face_confidence", 1.0) == 0.0 and len(results) == 1:
+                # enforce_detection=False can return a zero-confidence result
+                # when no face was actually detected — skip it
+                fa = best.get("facial_area", {})
+                # If the facial area covers the entire image it's a fallback; accept it
+                # only if the image itself looks like a face (small crop passed in)
+                ih, iw = bgr_image.shape[:2]
+                fa_w = fa.get("w", 0)
+                fa_h = fa.get("h", 0)
+                if fa_w >= iw * 0.95 and fa_h >= ih * 0.95:
+                    # whole-image fallback on a face crop — accept
+                    pass
+                else:
+                    return None
+
+            emb = best["embedding"]
+            fa = best.get("facial_area", {})
+            x = int(fa.get("x", 0))
+            y = int(fa.get("y", 0))
+            w = int(fa.get("w", bgr_image.shape[1]))
+            h = int(fa.get("h", bgr_image.shape[0]))
+            return FaceEmbeddingResult(embedding=emb, bbox_xywh=(x, y, w, h))
+
+        except Exception:
             return None
-
-        x, y, w, h = bbox
-        face = bgr_image[y : y + h, x : x + w]
-        emb = self._embed_face(face)
-        if emb is None:
-            return None
-
-        return FaceEmbeddingResult(embedding=emb, bbox_xywh=bbox)
-
-    def _embed_face(self, face_bgr: np.ndarray) -> Optional[list[float]]:
-        if face_bgr is None or face_bgr.size == 0:
-            return None
-
-        face_gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-        face_resized = cv2.resize(face_gray, (self._face_size, self._face_size), interpolation=cv2.INTER_AREA)
-        vec = face_resized.astype(np.float32).reshape(-1)
-
-        norm = float(np.linalg.norm(vec))
-        if norm <= 1e-9:
-            return None
-        vec = vec / norm
-        return vec.tolist()
 
     @staticmethod
     def cosine_similarity(a: list[float], b: list[float]) -> float:
