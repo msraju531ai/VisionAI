@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     yolo_device: str = "cpu"
 
     # Anomaly detection
-    idle_threshold_seconds: int = 300
+    idle_threshold_seconds: int = 10
     unauthorized_zone_alert: bool = True
     shift_deviation_threshold: float = 0.3
 

@@ -36,6 +36,11 @@ async def init_db() -> None:
         except Exception:
             pass
 
+        try:
+            await conn.execute(text("ALTER TABLE demo_videos ADD COLUMN total_samples INTEGER"))
+        except Exception:
+            pass
+
     async with async_session_factory() as session:
         count = (await session.execute(select(func.count(Camera.id)))).scalar() or 0
         if count == 0:

@@ -46,6 +46,24 @@ def _safe_unlink(path: Path, allowed_base: Path) -> None:
         return
 
 
+@router.get("/demo/videos/status")
+async def demo_videos_status(db: AsyncSession = Depends(get_db)):
+    videos = (await db.execute(select(DemoVideo).order_by(DemoVideo.created_at.desc()))).scalars().all()
+    out = []
+    for v in videos:
+        out.append({
+            "id": v.id,
+            "original_filename": v.original_filename,
+            "status": v.status,
+            "processed_frames": v.processed_frames,
+            "total_samples": getattr(v, "total_samples", None),
+            "started_at": v.started_at.isoformat() if v.started_at else None,
+            "finished_at": v.finished_at.isoformat() if v.finished_at else None,
+            "error_message": v.error_message or "",
+        })
+    return {"videos": out}
+
+
 @router.get("/demo", response_class=HTMLResponse)
 async def demo_page(
     request: Request,

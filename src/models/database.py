@@ -149,6 +149,7 @@ class DemoVideo(Base):
     )
     error_message = Column(Text, nullable=True)
     processed_frames = Column(Integer, default=0)
+    total_samples = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)

@@ -74,6 +74,12 @@ class VideoDemoProcessor:
             fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
             frame_step = max(1, int(round(fps * self._frame_sample_interval_seconds)))
+            total_samples = (total_frames + frame_step - 1) // frame_step if total_frames > 0 else None
+
+            fut = asyncio.run_coroutine_threadsafe(
+                self._set_total_samples(demo_video_id, total_samples), loop
+            )
+            fut.result(timeout=30)
 
             frame_index = 0
             processed = 0
@@ -195,6 +201,15 @@ class VideoDemoProcessor:
                 timestamp=timestamp,
                 confidence=confidence,
             )
+            await db.commit()
+
+    async def _set_total_samples(self, demo_video_id: int, total_samples: Optional[int]) -> None:
+        async with async_session_factory() as db:
+            result = await db.execute(select(DemoVideo).where(DemoVideo.id == demo_video_id))
+            video = result.scalar_one_or_none()
+            if video is None:
+                return
+            video.total_samples = total_samples
             await db.commit()
 
     async def _update_progress(self, demo_video_id: int, processed_frames: int) -> None:

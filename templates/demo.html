@@ -11,8 +11,8 @@
     <div class="brand">VisionAI</div>
     <div class="nav-links">
       <a href="/">Dashboard</a>
-      <a href="/demo" class="active">Employee ID Demo</a>
-      <a href="/demo/unauthorized">Unauthorized Entry Demo</a>
+      <a href="/demo" class="active">Employee ID </a>
+      <a href="/demo/unauthorized">Unauthorized Entry</a>
       <a href="/demo/idle">Idle Demo</a>
     </div>
   </nav>
@@ -130,7 +130,7 @@
             <tr>
               <th>ID</th>
               <th>Filename</th>
-              <th>Status</th>
+              <th>Progress</th>
               <th>Frames Sampled</th>
               <th>Started</th>
               <th>Finished</th>
@@ -144,11 +144,19 @@
               <tr>
                 <td>{{ v.id }}</td>
                 <td>{{ v.original_filename }}</td>
-                <td>{{ v.status }}</td>
-                <td>{{ v.processed_frames }}</td>
-                <td>{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
-                <td>{{ v.finished_at.strftime('%Y-%m-%d %H:%M:%S') if v.finished_at else '' }}</td>
-                <td>{{ v.error_message or '' }}</td>
+                <td>
+                  <div style="min-width:160px;">
+                    <div data-vid-status-text="{{ v.id }}">{{ v.status }}</div>
+                    <div style="height:8px; background:rgba(255,255,255,0.12); border-radius:999px; overflow:hidden; margin-top:6px;">
+                      <div data-vid-progress-bar="{{ v.id }}" data-vid-status-init="{{ v.status }}" style="height:100%; width:0%; background:#2d9cdb; transition:width 0.3s;"></div>
+                    </div>
+                    <div data-vid-progress-text="{{ v.id }}" style="font-size:12px; opacity:0.9; margin-top:4px;">0%</div>
+                  </div>
+                </td>
+                <td data-vid-processed="{{ v.id }}">{{ v.processed_frames }}</td>
+                <td data-vid-started="{{ v.id }}">{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
+                <td data-vid-finished="{{ v.id }}">{{ v.finished_at.strftime('%Y-%m-%d %H:%M:%S') if v.finished_at else '' }}</td>
+                <td data-vid-error="{{ v.id }}">{{ v.error_message or '' }}</td>
                 <td>
                   <form action="/demo/videos/{{ v.id }}/delete" method="post"
                         onsubmit="return confirm('Delete video {{ v.original_filename }} and its detections?');">
@@ -333,6 +341,64 @@
       player.load();
       modal.style.display = 'none';
     }
+
+    function fmtTs(iso) {
+      if (!iso) return '';
+      return iso.replace('T', ' ').split('.')[0];
+    }
+
+    function applyVideoProgress(v) {
+      const barEl   = document.querySelector(`[data-vid-progress-bar="${v.id}"]`);
+      const pctEl   = document.querySelector(`[data-vid-progress-text="${v.id}"]`);
+      const stEl    = document.querySelector(`[data-vid-status-text="${v.id}"]`);
+      const procEl  = document.querySelector(`[data-vid-processed="${v.id}"]`);
+      const startEl = document.querySelector(`[data-vid-started="${v.id}"]`);
+      const finEl   = document.querySelector(`[data-vid-finished="${v.id}"]`);
+      const errEl   = document.querySelector(`[data-vid-error="${v.id}"]`);
+
+      if (!barEl || !pctEl) return;
+
+      if (stEl)    stEl.textContent    = v.status || '';
+      if (procEl)  procEl.textContent  = v.processed_frames ?? '';
+      if (startEl) startEl.textContent = fmtTs(v.started_at);
+      if (finEl)   finEl.textContent   = fmtTs(v.finished_at);
+      if (errEl)   errEl.textContent   = v.error_message || '';
+
+      let pct = 0;
+      if (v.status === 'completed') {
+        pct = 100;
+      } else if (v.total_samples && v.total_samples > 0) {
+        pct = Math.floor((Number(v.processed_frames || 0) / Number(v.total_samples)) * 100);
+      }
+      pct = Math.max(0, Math.min(100, pct));
+      barEl.style.width = pct + '%';
+      pctEl.textContent = pct + '%';
+    }
+
+    // Initialise bars from server-rendered status on page load
+    document.querySelectorAll('[data-vid-status-init]').forEach(el => {
+      const id     = el.dataset.vidProgressBar;
+      const status = el.dataset.vidStatusInit;
+      if (status === 'completed') {
+        el.style.width = '100%';
+        const pctEl = document.querySelector(`[data-vid-progress-text="${id}"]`);
+        if (pctEl) pctEl.textContent = '100%';
+      }
+    });
+
+    async function refreshDemoVideos() {
+      try {
+        const res = await fetch('/demo/videos/status', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const v of (data.videos || [])) {
+          applyVideoProgress(v);
+        }
+      } catch (_) {}
+    }
+
+    refreshDemoVideos();
+    setInterval(refreshDemoVideos, 2000);
   </script>
 </body>
 </html>
