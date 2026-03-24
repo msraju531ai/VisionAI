@@ -4,7 +4,7 @@ Real-time video analysis platform for manufacturing and warehouse environments.
 Detects anomalous behaviour, monitors worker activity, and generates actionable alerts.
 
 ## Features
-
+test
 - **RTSP Camera Ingestion** — connects to IP cameras via RTSP/ONVIF
 - **YOLOv8 Person Detection** — real-time person detection on sampled frames
 - **Activity Tracking** — centroid-based tracker detects idle time and movement patterns

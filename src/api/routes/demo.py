@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 import cv2
 import numpy as np
@@ -15,6 +16,7 @@ from src.models.db_session import get_db
 from src.models.database import Employee, DemoVideo, DemoDetection
 from src.services.employee_identifier import EmployeeIdentifier
 from src.services.video_demo_processor import VideoDemoProcessor
+from src.utils.youtube_downloader import download_youtube_video
 
 router = APIRouter(tags=["Demo"])
 templates = Jinja2Templates(directory="templates")
@@ -38,6 +40,7 @@ async def demo_page(
     page: int = Query(1, ge=1),
     db: AsyncSession = Depends(get_db),
 ):
+    error = request.query_params.get("err")
     employees = (await db.execute(select(Employee).order_by(Employee.created_at.desc()))).scalars().all()
     videos = (await db.execute(select(DemoVideo).order_by(DemoVideo.created_at.desc()))).scalars().all()
 
@@ -88,6 +91,7 @@ async def demo_page(
         "demo.html",
         {
             "request": request,
+            "error": error,
             "employees": employees,
             "videos": videos,
             "detections": detections,
@@ -133,6 +137,38 @@ async def register_employee(
     db.add(emp)
     await db.commit()
 
+    return RedirectResponse(url="/demo", status_code=303)
+
+
+@router.post("/demo/videos/youtube")
+async def upload_video_from_youtube(
+    youtube_url: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_dirs()
+
+    ts = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    basename = f"youtube_{ts}"
+
+    try:
+        res = download_youtube_video(youtube_url, output_dir=_VID_DIR, basename=basename)
+    except FileNotFoundError:
+        return RedirectResponse(url="/demo?err=yt-dlp%20not%20installed", status_code=303)
+    except Exception as e:
+        raw = str(e).replace("\n", " ")
+        hint = raw
+        if "ffmpeg" in raw.lower() and "not found" in raw.lower():
+            hint = "ffmpeg not found. Install ffmpeg and ensure it is on PATH, then try again. " + raw
+        msg = quote(hint)
+        return RedirectResponse(url=f"/demo?err={msg}", status_code=303)
+
+    original = f"{res.title}.mp4"
+    demo_video = DemoVideo(original_filename=original, video_path=str(res.file_path), status="uploaded")
+    db.add(demo_video)
+    await db.commit()
+    await db.refresh(demo_video)
+
+    _processor.start_background(demo_video.id)
     return RedirectResponse(url="/demo", status_code=303)
 
 

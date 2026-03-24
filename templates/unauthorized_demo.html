@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionAI — Unauthorized Entry Demo</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">VisionAI</div>
+    <div class="nav-links">
+      <a href="/">Dashboard</a>
+      <a href="/demo">Employee ID Demo</a>
+      <a href="/demo/unauthorized" class="active">Unauthorized Entry Demo</a>
+      <a href="/demo/idle">Idle Demo</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Unauthorized Entry Demo</h2>
+      </div>
+      {% if error %}
+        <div style="margin-bottom:12px; color:#fff; background:rgba(255,0,0,0.15); padding:10px 12px; border-radius:8px;">
+          {{ error }}
+        </div>
+      {% endif %}
+      <div style="margin-bottom:12px; opacity:0.9;">
+        Green = Authorized, Red = Unauthorized
+      </div>
+      <form class="form-grid" action="/demo/unauthorized/videos" method="post" enctype="multipart/form-data">
+        <label>Upload Video
+          <input type="file" name="video" accept="video/*" required>
+        </label>
+        <div>
+          <button type="submit" class="btn btn-primary">Upload & Process</button>
+        </div>
+      </form>
+
+      <div style="margin-top:12px; opacity:0.9;">Or download from YouTube URL</div>
+      <form class="form-grid" action="/demo/unauthorized/videos/youtube" method="post">
+        <label>YouTube URL
+          <input type="url" name="youtube_url" placeholder="https://www.youtube.com/shorts/..." required>
+        </label>
+        <div>
+          <button type="submit" class="btn btn-primary">Download & Process</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Processed Videos</h2>
+        <form action="/demo/unauthorized/clear" method="post" onsubmit="return confirm('Delete all processed videos? This will remove records and files.');">
+          <button type="submit" class="btn btn-danger btn-sm">Clear All</button>
+        </form>
+      </div>
+
+      <table class="events-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Video</th>
+            <th>Progress</th>
+            <th>Processed Frames</th>
+            <th>Started</th>
+            <th>Finished</th>
+            <th>First Unauthorized Time (s)</th>
+            <th>Status</th>
+            <th>Output</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in videos %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>{{ v.original_filename }}</td>
+            <td>
+              <div style="min-width:160px;">
+                <div data-status-text="{{ v.id }}">{{ v.status }}</div>
+                <div style="height:8px; background:rgba(255,255,255,0.12); border-radius:999px; overflow:hidden; margin-top:6px;">
+                  <div data-progress-bar="{{ v.id }}" style="height:100%; width:0%; background:#2d9cdb;"></div>
+                </div>
+                <div data-progress-text="{{ v.id }}" style="font-size:12px; opacity:0.9; margin-top:4px;">0%</div>
+              </div>
+            </td>
+            <td data-processed="{{ v.id }}">{{ v.processed_frames }}</td>
+            <td data-started="{{ v.id }}">{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
+            <td data-finished="{{ v.id }}">{{ v.finished_at.strftime('%Y-%m-%d %H:%M:%S') if v.finished_at else '' }}</td>
+            <td data-first-unauth="{{ v.id }}">
+              {% if events.get(v.id) %}
+                {{ '%.2f'|format(events.get(v.id).timestamp_seconds) }}
+              {% endif %}
+            </td>
+            <td data-outcome="{{ v.id }}">
+              {% if v.outcome_status == 'authorized' %}
+                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#19c37d;"></span>
+              {% elif v.outcome_status == 'unauthorized' %}
+                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#ef4444;"></span>
+              {% elif v.outcome_status == 'idle' %}
+                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#f59e0b;"></span>
+              {% endif %}
+            </td>
+            <td data-output="{{ v.id }}">
+              {% if v.output_video_path %}
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  data-video-id="{{ v.id }}"
+                  data-filename="{{ v.original_filename }}"
+                  onclick="openOutputFromBtn(this)"
+                >
+                  View
+                </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div style="margin-top:10px; opacity:0.9;">
+        <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#19c37d;"></span>
+        Green → Authorized
+        &nbsp;&nbsp;
+        <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#ef4444;"></span>
+        Red → Unauthorized
+        &nbsp;&nbsp;
+        <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#f59e0b;"></span>
+        Yellow → Idle
+      </div>
+    </section>
+  </main>
+
+  <div id="output-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999;">
+    <div style="max-width:900px; margin:5vh auto; background:var(--panel); padding:16px; border-radius:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <div id="output-title" style="font-weight:600;">Output Video</div>
+        <button type="button" class="btn btn-danger btn-sm" onclick="closeOutput()">Close</button>
+      </div>
+      <div style="margin-top:12px;">
+        <video id="output-player" controls style="width:100%; max-height:70vh; background:#000;"></video>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function outcomeDot(outcome) {
+      let color = '';
+      if (outcome === 'authorized') color = '#19c37d';
+      if (outcome === 'unauthorized') color = '#ef4444';
+      if (outcome === 'idle') color = '#f59e0b';
+      if (!color) return '';
+      return `<span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:${color};"></span>`;
+    }
+
+    function openOutputFromBtn(btn) {
+      const videoId = parseInt(btn.dataset.videoId, 10);
+      const filename = btn.dataset.filename || `video-${videoId}`;
+      openOutput(videoId, filename);
+    }
+
+    window.openOutputFromBtn = openOutputFromBtn;
+
+    function openOutput(videoId, filename) {
+      const modal = document.getElementById('output-modal');
+      const player = document.getElementById('output-player');
+      const title = document.getElementById('output-title');
+
+      title.textContent = `Video #${videoId} — ${filename}`;
+      player.pause();
+      player.preload = 'auto';
+      player.autoplay = true;
+      const url = `/demo/unauthorized/videos/${videoId}/output?ts=${Date.now()}`;
+      console.log('Opening output URL:', url);
+      // Force a tiny request so we can see status in Network and confirm backend is hit.
+      fetch(url, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { 'Range': 'bytes=0-1' },
+      })
+        .then((r) => {
+          console.log('Output fetch status:', r.status, 'content-type:', r.headers.get('content-type'), 'content-range:', r.headers.get('content-range'));
+        })
+        .catch((e) => console.error('Output fetch failed:', e));
+
+      player.src = url;
+      player.load();
+      modal.style.display = 'block';
+
+      // User gesture occurred (button click), so attempt to start immediately.
+      // If we later have a valid first-unauthorized timestamp we will seek on metadata.
+      try {
+        const p0 = player.play();
+        if (p0 && typeof p0.catch === 'function') {
+          p0.catch((err) => console.error('Output video play() failed:', err));
+        }
+      } catch (e) {
+        console.error('Output video play() threw:', e);
+      }
+
+      player.addEventListener('error', () => {
+        console.error('Output video element error:', player.error);
+      }, { once: true });
+
+      const unauthEl = document.querySelector(`[data-first-unauth="${videoId}"]`);
+      const t = unauthEl ? parseFloat((unauthEl.textContent || '').trim()) : NaN;
+      if (!Number.isFinite(t)) {
+        return;
+      }
+
+      const clipStart = Math.max(0, t);
+      const clipMs = 12000;
+
+      const onMeta = () => {
+        try {
+          player.currentTime = clipStart;
+          const p = player.play();
+          if (p && typeof p.catch === 'function') {
+            p.catch((err) => console.error('Output video play() failed after seek:', err));
+          }
+          window.setTimeout(() => {
+            try {
+              if (modal.style.display !== 'none') {
+                player.pause();
+              }
+            } catch (e) {
+              // ignore
+            }
+          }, clipMs);
+        } catch (e) {
+          // ignore
+        }
+      };
+
+      player.addEventListener('loadedmetadata', onMeta, { once: true });
+    }
+
+    window.openOutput = openOutput;
+
+    function closeOutput() {
+      const modal = document.getElementById('output-modal');
+      const player = document.getElementById('output-player');
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+      modal.style.display = 'none';
+    }
+
+    function fmtTs(iso) {
+      if (!iso) return '';
+      // iso like 2026-03-24T01:23:45.123456
+      return iso.replace('T', ' ').split('.')[0];
+    }
+
+    async function refreshUnauthorizedStatus() {
+      try {
+        const res = await fetch('/demo/unauthorized/status', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const vids = data.videos || [];
+
+        for (const v of vids) {
+          const processedEl = document.querySelector(`[data-processed="${v.id}"]`);
+          const startedEl = document.querySelector(`[data-started="${v.id}"]`);
+          const finishedEl = document.querySelector(`[data-finished="${v.id}"]`);
+          const unauthEl = document.querySelector(`[data-first-unauth="${v.id}"]`);
+          const outcomeEl = document.querySelector(`[data-outcome="${v.id}"]`);
+          const outputEl = document.querySelector(`[data-output="${v.id}"]`);
+          const statusTextEl = document.querySelector(`[data-status-text="${v.id}"]`);
+          const barEl = document.querySelector(`[data-progress-bar="${v.id}"]`);
+          const pctEl = document.querySelector(`[data-progress-text="${v.id}"]`);
+
+          if (!processedEl || !barEl || !pctEl) continue;
+
+          processedEl.textContent = v.processed_frames ?? '';
+          if (startedEl) startedEl.textContent = fmtTs(v.started_at);
+          if (finishedEl) finishedEl.textContent = fmtTs(v.finished_at);
+          if (statusTextEl) statusTextEl.textContent = v.status || '';
+
+          if (unauthEl && v.first_unauthorized_time != null) {
+            unauthEl.textContent = Number(v.first_unauthorized_time).toFixed(2);
+          }
+
+          if (outcomeEl) {
+            outcomeEl.innerHTML = outcomeDot(v.outcome_status);
+          }
+
+          let pct = 0;
+          if (v.total_samples && v.total_samples > 0) {
+            pct = Math.floor((Number(v.processed_frames || 0) / Number(v.total_samples)) * 100);
+          } else if (v.status === 'completed') {
+            pct = 100;
+          }
+          pct = Math.max(0, Math.min(100, pct));
+          barEl.style.width = pct + '%';
+          pctEl.textContent = pct + '%';
+
+          if (outputEl && v.output_available) {
+            if (!outputEl.querySelector('button')) {
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'btn btn-primary btn-sm';
+              btn.textContent = 'View';
+              btn.dataset.videoId = String(v.id);
+              btn.dataset.filename = v.original_filename || `video-${v.id}`;
+              btn.addEventListener('click', (e) => openOutputFromBtn(e.currentTarget));
+              outputEl.appendChild(btn);
+            }
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    refreshUnauthorizedStatus();
+    setInterval(refreshUnauthorizedStatus, 2000);
+  </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from config.settings import settings
 from src.models.database import Base, Camera
@@ -10,6 +10,31 @@ async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_o
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        try:
+            await conn.execute(text("ALTER TABLE unauthorized_demo_videos ADD COLUMN total_samples INTEGER"))
+        except Exception:
+            pass
+
+        try:
+            await conn.execute(text("ALTER TABLE unauthorized_demo_videos ADD COLUMN outcome_status VARCHAR(16)"))
+        except Exception:
+            pass
+
+        try:
+            await conn.execute(text("ALTER TABLE idle_demo_videos ADD COLUMN total_samples INTEGER"))
+        except Exception:
+            pass
+
+        try:
+            await conn.execute(text("ALTER TABLE idle_demo_videos ADD COLUMN outcome_status VARCHAR(16)"))
+        except Exception:
+            pass
+
+        try:
+            await conn.execute(text("ALTER TABLE idle_demo_videos ADD COLUMN video_start_at DATETIME"))
+        except Exception:
+            pass
 
     async with async_session_factory() as session:
         count = (await session.execute(select(func.count(Camera.id)))).scalar() or 0

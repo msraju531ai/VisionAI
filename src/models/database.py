@@ -172,6 +172,73 @@ class DemoDetection(Base):
     employee = relationship("Employee", back_populates="detections")
 
 
+class UnauthorizedDemoVideo(Base):
+    __tablename__ = "unauthorized_demo_videos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    original_filename = Column(String(256), nullable=False)
+    video_path = Column(String(512), nullable=False)
+    output_video_path = Column(String(512), nullable=True)
+    status = Column(String(32), default="uploaded")
+    error_message = Column(Text, nullable=True)
+    processed_frames = Column(Integer, default=0)
+    total_samples = Column(Integer, nullable=True)
+    outcome_status = Column(String(16), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    events = relationship("UnauthorizedEntryEvent", back_populates="video", cascade="all, delete-orphan")
+
+
+class UnauthorizedEntryEvent(Base):
+    __tablename__ = "unauthorized_entry_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    video_id = Column(Integer, ForeignKey("unauthorized_demo_videos.id"), nullable=False, index=True)
+    timestamp_seconds = Column(Float, nullable=False)
+    confidence = Column(Float, nullable=True)
+    frame_index = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    video = relationship("UnauthorizedDemoVideo", back_populates="events")
+
+
+class IdleDemoVideo(Base):
+    __tablename__ = "idle_demo_videos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    original_filename = Column(String(256), nullable=False)
+    video_path = Column(String(512), nullable=False)
+    output_video_path = Column(String(512), nullable=True)
+    status = Column(String(32), default="uploaded")
+    error_message = Column(Text, nullable=True)
+    processed_frames = Column(Integer, default=0)
+    total_samples = Column(Integer, nullable=True)
+    video_start_at = Column(DateTime, nullable=True)
+    outcome_status = Column(String(16), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    events = relationship("IdleEvent", back_populates="video", cascade="all, delete-orphan")
+
+
+class IdleEvent(Base):
+    __tablename__ = "idle_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    video_id = Column(Integer, ForeignKey("idle_demo_videos.id"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("demo_employees.id"), nullable=True, index=True)
+    start_ts_seconds = Column(Float, nullable=False)
+    end_ts_seconds = Column(Float, nullable=False)
+    duration_seconds = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    video = relationship("IdleDemoVideo", back_populates="events")
+    employee = relationship("Employee")
+
+
 class EmployeeDetection(Base):
     __tablename__ = "employee_detections"
 

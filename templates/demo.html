@@ -12,10 +12,20 @@
     <div class="nav-links">
       <a href="/">Dashboard</a>
       <a href="/demo" class="active">Employee ID Demo</a>
+      <a href="/demo/unauthorized">Unauthorized Entry Demo</a>
+      <a href="/demo/idle">Idle Demo</a>
     </div>
   </nav>
 
   <main class="container">
+    {% if error %}
+      <section class="panel" style="border:1px solid rgba(255,0,0,0.35);">
+        <div style="color:#fff; background:rgba(255,0,0,0.15); padding:10px 12px; border-radius:8px;">
+          {{ error }}
+        </div>
+      </section>
+    {% endif %}
+
     <section class="panel">
       <div class="panel-header">
         <h2>Employee Registration</h2>
@@ -68,11 +78,21 @@
         <h2>Video Upload</h2>
       </div>
       <form class="form-grid" action="/demo/videos" method="post" enctype="multipart/form-data">
-        <label>Video File (mp4/avi)
-          <input type="file" name="video" accept="video/mp4,video/x-msvideo" required>
+        <label>Video File (.mp4/.avi)
+          <input type="file" name="video" accept="video/*" required>
         </label>
         <div>
-          <button type="submit" class="btn btn-success">Upload & Process</button>
+          <button type="submit" class="btn btn-primary">Upload & Process</button>
+        </div>
+      </form>
+
+      <div style="margin-top:12px; opacity:0.9;">Or download from YouTube URL</div>
+      <form class="form-grid" action="/demo/videos/youtube" method="post">
+        <label>YouTube URL
+          <input type="url" name="youtube_url" placeholder="https://www.youtube.com/shorts/..." required>
+        </label>
+        <div>
+          <button type="submit" class="btn btn-primary">Download & Process</button>
         </div>
       </form>
 

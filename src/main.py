@@ -18,6 +18,7 @@ from src.api.dependencies import (
 from src.core.pipeline import init_pipeline_manager
 
 from src.api.routes import cameras, zones, events, alerts, shifts, dashboard, config, summaries, pipeline, demo, attendance, schedule
+from src.api.routes import unauthorized_demo, idle_demo
 
 
 @asynccontextmanager
@@ -66,6 +67,8 @@ app.include_router(config.router, prefix="/api")
 app.include_router(summaries.router, prefix="/api")
 app.include_router(pipeline.router, prefix="/api")
 app.include_router(demo.router)
+app.include_router(unauthorized_demo.router)
+app.include_router(idle_demo.router)
 app.include_router(attendance.router)
 app.include_router(schedule.router, prefix="/api")
 

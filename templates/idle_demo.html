@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionAI — Idle Demo</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">VisionAI</div>
+    <div class="nav-links">
+      <a href="/">Dashboard</a>
+      <a href="/demo">Employee ID Demo</a>
+      <a href="/demo/unauthorized">Unauthorized Entry Demo</a>
+      <a href="/demo/idle" class="active">Idle Demo</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Idle Demo</h2>
+      </div>
+      {% if error %}
+        <div style="margin-bottom:12px; color:#fff; background:rgba(255,0,0,0.15); padding:10px 12px; border-radius:8px;">
+          {{ error }}
+        </div>
+      {% endif %}
+      <div style="margin-bottom:12px; opacity:0.9;">
+        Green = Authorized, Red = Unauthorized, Yellow = Idle
+      </div>
+      <form class="form-grid" action="/demo/idle/videos" method="post" enctype="multipart/form-data">
+        <label>Video Start DateTime (YYYY-MM-DD HH:MM:SS)
+          <input type="text" name="video_start_at" placeholder="2026-03-24 09:00:00">
+        </label>
+        <label>Upload Video
+          <input type="file" name="video" accept="video/*" required>
+        </label>
+        <div>
+          <button type="submit" class="btn btn-primary">Upload & Process</button>
+        </div>
+      </form>
+
+      <div style="margin-top:12px; opacity:0.9;">Or download from YouTube URL</div>
+      <form class="form-grid" action="/demo/idle/videos/youtube" method="post">
+        <label>Video Start DateTime (YYYY-MM-DD HH:MM:SS)
+          <input type="text" name="video_start_at" placeholder="2026-03-24 09:00:00">
+        </label>
+        <label>YouTube URL
+          <input type="url" name="youtube_url" placeholder="https://www.youtube.com/shorts/..." required>
+        </label>
+        <div>
+          <button type="submit" class="btn btn-primary">Download & Process</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Work Schedule (for Shift Compliance)</h2>
+      </div>
+      <form class="form-grid" action="/demo/idle/schedule" method="post">
+        <label>Employee
+          <select name="employee_id" required>
+            {% for e in employees %}
+              <option value="{{ e.id }}">{{ e.name }} (#{{ e.id }})</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Expected Start (HH:MM)
+          <input type="text" name="expected_start_time" placeholder="09:00" required>
+        </label>
+        <label>Expected End (HH:MM)
+          <input type="text" name="expected_end_time" placeholder="18:00" required>
+        </label>
+        <label>Grace Minutes
+          <input type="number" name="grace_minutes" min="0" max="180" value="10" required>
+        </label>
+        <div>
+          <button type="submit" class="btn btn-primary">Save Schedule</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Processed Videos</h2>
+      </div>
+
+      <table class="events-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Video</th>
+            <th>Job</th>
+            <th>Processed Frames</th>
+            <th>Started</th>
+            <th>Finished</th>
+            <th>Idle Events</th>
+            <th>Status</th>
+            <th>Output</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in videos %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>{{ v.original_filename }}</td>
+            <td data-job-status="{{ v.id }}">{{ v.status }}</td>
+            <td data-processed="{{ v.id }}">{{ v.processed_frames }}</td>
+            <td data-started="{{ v.id }}">{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
+            <td data-finished="{{ v.id }}">{{ v.finished_at.strftime('%Y-%m-%d %H:%M:%S') if v.finished_at else '' }}</td>
+            <td>{{ (events_by_video.get(v.id) or [])|length }}</td>
+            <td data-outcome="{{ v.id }}">
+              {% if v.outcome_status == 'authorized' %}
+                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#19c37d;"></span>
+              {% elif v.outcome_status == 'unauthorized' %}
+                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#ef4444;"></span>
+              {% elif v.outcome_status == 'idle' %}
+                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#f59e0b;"></span>
+              {% endif %}
+            </td>
+            <td data-output="{{ v.id }}">
+              {% if v.output_video_path %}
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  data-video-id="{{ v.id }}"
+                  data-filename="{{ v.original_filename }}"
+                  onclick="openOutputFromBtn(this)"
+                >
+                  View
+                </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div style="margin-top:10px; opacity:0.9;">
+        <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#19c37d;"></span>
+        Green → Authorized
+        &nbsp;&nbsp;
+        <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#ef4444;"></span>
+        Red → Unauthorized
+        &nbsp;&nbsp;
+        <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#f59e0b;"></span>
+        Yellow → Idle
+      </div>
+
+      {% for v in videos %}
+        {% if v.output_video_path %}
+          <div style="margin-top:16px;">
+            <div style="font-weight:600; margin-bottom:8px;">Preview: #{{ v.id }} — {{ v.original_filename }}</div>
+            <video controls style="width:100%; max-height:70vh; background:#000;" src="/demo/idle/videos/{{ v.id }}/output"></video>
+          </div>
+
+          {% if v.video_start_at %}
+            <div style="margin-top:12px;">
+              <div style="font-weight:600; margin-bottom:8px;">Shift Compliance Summary (Date: {{ v.video_start_at.date().isoformat() }})</div>
+              {% set rows = compliance_by_video.get(v.id) or [] %}
+              {% if rows|length > 0 %}
+                <table class="events-table">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Check In</th>
+                      <th>Check Out</th>
+                      <th>Total (min)</th>
+                      <th>Status</th>
+                      <th>Deviation (min)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for r in rows %}
+                      <tr>
+                        <td>{{ r.employee_name }} (#{{ r.employee_id }})</td>
+                        <td>{{ r.check_in.strftime('%Y-%m-%d %H:%M:%S') if r.check_in else '' }}</td>
+                        <td>{{ r.check_out.strftime('%Y-%m-%d %H:%M:%S') if r.check_out else '' }}</td>
+                        <td>{{ r.total_minutes }}</td>
+                        <td>{{ r.status }}</td>
+                        <td>{{ r.deviation_minutes }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              {% else %}
+                <div style="opacity:0.9;">No attendance/compliance data yet for this video date.</div>
+              {% endif %}
+            </div>
+          {% else %}
+            <div style="margin-top:12px; opacity:0.9;">To enable shift compliance, re-upload with Video Start DateTime.</div>
+          {% endif %}
+
+          {% set evs = events_by_video.get(v.id) or [] %}
+          {% if evs|length > 0 %}
+            <div style="margin-top:12px;">
+              <div style="font-weight:600; margin-bottom:8px;">Idle Events (latest 10)</div>
+              <table class="events-table">
+                <thead>
+                  <tr>
+                    <th>Start (s)</th>
+                    <th>End (s)</th>
+                    <th>Duration (s)</th>
+                    <th>Employee ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for e in evs %}
+                  <tr>
+                    <td>{{ '%.2f'|format(e.start_ts_seconds) }}</td>
+                    <td>{{ '%.2f'|format(e.end_ts_seconds) }}</td>
+                    <td>{{ '%.1f'|format(e.duration_seconds) }}</td>
+                    <td>{{ e.employee_id or '' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    </section>
+  </main>
+
+  <div id="output-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999;">
+    <div style="max-width:900px; margin:5vh auto; background:var(--panel); padding:16px; border-radius:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <div id="output-title" style="font-weight:600;">Output Video</div>
+        <button type="button" class="btn btn-danger btn-sm" onclick="closeOutput()">Close</button>
+      </div>
+      <div style="margin-top:12px;">
+        <video id="output-player" controls style="width:100%; max-height:70vh; background:#000;"></video>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function outcomeDot(outcome) {
+      let color = '';
+      if (outcome === 'authorized') color = '#19c37d';
+      if (outcome === 'unauthorized') color = '#ef4444';
+      if (outcome === 'idle') color = '#f59e0b';
+      if (!color) return '';
+      return `<span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:${color};"></span>`;
+    }
+
+    function openOutputFromBtn(btn) {
+      const videoId = parseInt(btn.dataset.videoId, 10);
+      const filename = btn.dataset.filename || `video-${videoId}`;
+      openOutput(videoId, filename);
+    }
+
+    window.openOutputFromBtn = openOutputFromBtn;
+
+    function openOutput(videoId, filename) {
+      const modal = document.getElementById('output-modal');
+      const player = document.getElementById('output-player');
+      const title = document.getElementById('output-title');
+
+      title.textContent = `Video #${videoId} — ${filename}`;
+      player.pause();
+      player.preload = 'auto';
+      player.autoplay = true;
+      player.src = `/demo/idle/videos/${videoId}/output`;
+      player.load();
+      modal.style.display = 'block';
+
+      // User gesture occurred (button click), so attempt to start immediately.
+      try {
+        const p0 = player.play();
+        if (p0 && typeof p0.catch === 'function') p0.catch(() => {});
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    window.openOutput = openOutput;
+
+    function closeOutput() {
+      const modal = document.getElementById('output-modal');
+      const player = document.getElementById('output-player');
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+      modal.style.display = 'none';
+    }
+
+    function fmtTs(iso) {
+      if (!iso) return '';
+      return iso.replace('T', ' ').split('.')[0];
+    }
+
+    async function refreshIdleStatus() {
+      try {
+        const res = await fetch('/demo/idle/status', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const vids = data.videos || [];
+
+        for (const v of vids) {
+          const jobEl = document.querySelector(`[data-job-status="${v.id}"]`);
+          const processedEl = document.querySelector(`[data-processed="${v.id}"]`);
+          const startedEl = document.querySelector(`[data-started="${v.id}"]`);
+          const finishedEl = document.querySelector(`[data-finished="${v.id}"]`);
+          const outcomeEl = document.querySelector(`[data-outcome="${v.id}"]`);
+          const outputEl = document.querySelector(`[data-output="${v.id}"]`);
+
+          if (jobEl) jobEl.textContent = v.status || '';
+          if (processedEl) processedEl.textContent = v.processed_frames ?? '';
+          if (startedEl) startedEl.textContent = fmtTs(v.started_at);
+          if (finishedEl) finishedEl.textContent = fmtTs(v.finished_at);
+          if (outcomeEl) outcomeEl.innerHTML = outcomeDot(v.outcome_status);
+
+          if (outputEl && v.output_available) {
+            if (!outputEl.querySelector('button')) {
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'btn btn-primary btn-sm';
+              btn.textContent = 'View';
+              btn.dataset.videoId = String(v.id);
+              btn.dataset.filename = v.original_filename || `video-${v.id}`;
+              btn.addEventListener('click', (e) => openOutputFromBtn(e.currentTarget));
+              outputEl.appendChild(btn);
+            }
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    refreshIdleStatus();
+    setInterval(refreshIdleStatus, 2000);
+  </script>
+</body>
+</html>
