@@ -60,6 +60,7 @@ class UnauthorizedDemoProcessor:
         employees: list[tuple[int, str, list[float]]],
     ) -> None:
         cap: Optional[cv2.VideoCapture] = None
+        ffmpeg_proc: Optional[subprocess.Popen] = None
         writer: Optional[cv2.VideoWriter] = None
 
         try:
@@ -80,23 +81,8 @@ class UnauthorizedDemoProcessor:
             )
             fut.result(timeout=30)
 
-            out_path = self._output_path_for(video_path, demo_video_id)
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-
-            writer = None
-            for fourcc_str in ("avc1", "H264", "mp4v"):
-                fourcc = cv2.VideoWriter_fourcc(*fourcc_str)
-                writer = cv2.VideoWriter(str(out_path), fourcc, fps, (width, height))
-                if writer.isOpened():
-                    if fourcc_str != "mp4v":
-                        logger.info(f"Unauthorized demo using fourcc={fourcc_str} for browser-compatible output")
-                    else:
-                        logger.warning(
-                            "Unauthorized demo fell back to fourcc=mp4v; output may not play in browser without ffmpeg transcoding"
-                        )
-                    break
-            if not writer.isOpened():
-                raise RuntimeError(f"Failed to open video writer for: {out_path}")
+            # Prefer ffmpeg pipe (guaranteed H.264) → fall back to OpenCV VideoWriter
+            out_path, ffmpeg_proc, writer = self._open_writer(video_path, demo_video_id, fps, width, height)
 
             fut = asyncio.run_coroutine_threadsafe(self._set_output_path(demo_video_id, out_path), loop)
             fut.result(timeout=30)
@@ -105,6 +91,8 @@ class UnauthorizedDemoProcessor:
             processed = 0
             unauthorized_event_saved = False
             any_person_seen = False
+            # Persist last known boxes so every frame (sampled or not) is annotated
+            last_boxes: list[tuple[int, int, int, int, tuple, str]] = []
 
             while True:
                 ok, frame = cap.read()
@@ -112,7 +100,12 @@ class UnauthorizedDemoProcessor:
                     break
 
                 if frame_index % frame_step != 0:
-                    writer.write(frame)
+                    # Draw last known detections on every non-sampled frame
+                    for bx1, by1, bx2, by2, bcolor, blabel in last_boxes:
+                        cv2.rectangle(frame, (bx1, by1), (bx2, by2), bcolor, 2)
+                        cv2.putText(frame, blabel, (bx1, max(20, by1 - 8)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, bcolor, 2, cv2.LINE_AA)
+                    self._write_frame(ffmpeg_proc, writer, frame)
                     frame_index += 1
                     continue
 
@@ -120,6 +113,8 @@ class UnauthorizedDemoProcessor:
 
                 if detections:
                     any_person_seen = True
+
+                current_boxes: list[tuple[int, int, int, int, tuple, str]] = []
 
                 for d in detections:
                     x1, y1, x2, y2 = self._clip_bbox(frame, d)
@@ -153,6 +148,7 @@ class UnauthorizedDemoProcessor:
                                 label = f"{emp_name} ({score:.2f})"
                                 color = (0, 200, 0)  # green
 
+                    current_boxes.append((x1, y1, x2, y2, color, label))
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                     cv2.putText(
                         frame,
@@ -179,7 +175,8 @@ class UnauthorizedDemoProcessor:
                         fut.result(timeout=30)
                         unauthorized_event_saved = True
 
-                writer.write(frame)
+                last_boxes = current_boxes
+                self._write_frame(ffmpeg_proc, writer, frame)
 
                 processed += 1
                 if processed % 25 == 0:
@@ -199,58 +196,93 @@ class UnauthorizedDemoProcessor:
             fut = asyncio.run_coroutine_threadsafe(self._set_outcome_status(demo_video_id, outcome), loop)
             fut.result(timeout=30)
 
-            # Transcode to H.264 for browser playback when ffmpeg is available.
-            h264_path = self._h264_output_path_for(video_path, demo_video_id)
-            if self._try_transcode_to_h264(out_path, h264_path):
-                fut = asyncio.run_coroutine_threadsafe(self._set_output_path(demo_video_id, h264_path), loop)
-                fut.result(timeout=30)
+            # Finalize ffmpeg pipe — must flush before marking completed
+            if ffmpeg_proc is not None:
+                ffmpeg_proc.stdin.close()
+                rc = ffmpeg_proc.wait(timeout=120)
+                ffmpeg_proc = None
+                if rc != 0:
+                    raise RuntimeError(f"ffmpeg encoding failed (exit code {rc})")
 
         finally:
             if cap is not None:
                 cap.release()
+            if ffmpeg_proc is not None:
+                try:
+                    ffmpeg_proc.stdin.close()
+                except Exception:
+                    pass
+                try:
+                    ffmpeg_proc.wait(timeout=30)
+                except Exception:
+                    ffmpeg_proc.terminate()
             if writer is not None:
                 writer.release()
 
     @staticmethod
-    def _h264_output_path_for(input_path: Path, demo_video_id: int) -> Path:
+    def _open_writer(
+        video_path: Path,
+        demo_video_id: int,
+        fps: float,
+        width: int,
+        height: int,
+    ) -> tuple[Path, Optional[subprocess.Popen], Optional[cv2.VideoWriter]]:
+        """Try ffmpeg pipe (H.264) first; fall back to OpenCV VideoWriter."""
         base = Path("data") / "demo" / "unauthorized" / "outputs"
-        stem = input_path.stem
-        return base / f"{stem}_unauth_{demo_video_id}_h264.mp4"
+        stem = video_path.stem
+        h264_path = base / f"{stem}_unauth_{demo_video_id}.mp4"
+        h264_path.parent.mkdir(parents=True, exist_ok=True)
+
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg:
+            try:
+                proc = subprocess.Popen(
+                    [
+                        ffmpeg, "-y",
+                        "-f", "rawvideo",
+                        "-vcodec", "rawvideo",
+                        "-pix_fmt", "bgr24",
+                        "-s", f"{width}x{height}",
+                        "-r", str(fps),
+                        "-i", "pipe:0",
+                        "-vcodec", "libx264",
+                        "-pix_fmt", "yuv420p",
+                        "-movflags", "+faststart",
+                        "-an",
+                        str(h264_path),
+                    ],
+                    stdin=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                logger.info("Unauthorized demo: writing H.264 via ffmpeg pipe")
+                return h264_path, proc, None
+            except Exception as e:
+                logger.warning(f"ffmpeg pipe failed to open: {e} — falling back to OpenCV")
+
+        # OpenCV fallback (mp4v — may not play in all browsers)
+        fallback_path = base / f"{stem}_unauth_{demo_video_id}_cv.mp4"
+        fallback_path.parent.mkdir(parents=True, exist_ok=True)
+        for fourcc_str in ("avc1", "H264", "mp4v"):
+            fourcc = cv2.VideoWriter_fourcc(*fourcc_str)
+            w = cv2.VideoWriter(str(fallback_path), fourcc, fps, (width, height))
+            if w.isOpened():
+                logger.warning(
+                    f"Unauthorized demo: ffmpeg not found, using OpenCV fourcc={fourcc_str}. "
+                    "Install ffmpeg for guaranteed browser playback."
+                )
+                return fallback_path, None, w
+        raise RuntimeError(f"Failed to open any video writer for: {fallback_path}")
 
     @staticmethod
-    def _try_transcode_to_h264(src_path: Path, dst_path: Path) -> bool:
-        ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg:
-            return False
-
-        try:
-            dst_path.parent.mkdir(parents=True, exist_ok=True)
-            proc = subprocess.run(
-                [
-                    ffmpeg,
-                    "-y",
-                    "-i",
-                    str(src_path),
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    "-movflags",
-                    "+faststart",
-                    "-an",
-                    str(dst_path),
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if proc.returncode != 0:
-                logger.warning(f"ffmpeg transcode failed: {proc.stderr or proc.stdout}")
-                return False
-            return dst_path.exists() and dst_path.stat().st_size > 0
-        except Exception as e:
-            logger.warning(f"ffmpeg transcode error: {e}")
-            return False
+    def _write_frame(
+        ffmpeg_proc: Optional[subprocess.Popen],
+        writer: Optional[cv2.VideoWriter],
+        frame,
+    ) -> None:
+        if ffmpeg_proc is not None:
+            ffmpeg_proc.stdin.write(frame.tobytes())
+        elif writer is not None:
+            writer.write(frame)
 
     @staticmethod
     def _clip_bbox(frame_bgr, d) -> tuple[int, int, int, int]:
@@ -261,11 +293,7 @@ class UnauthorizedDemoProcessor:
         y2 = max(0, min(h, int(d.y2)))
         return x1, y1, x2, y2
 
-    @staticmethod
-    def _output_path_for(input_path: Path, demo_video_id: int) -> Path:
-        base = Path("data") / "demo" / "unauthorized" / "outputs"
-        stem = input_path.stem
-        return base / f"{stem}_unauth_{demo_video_id}.mp4"
+
 
     async def _load_video_path(self, demo_video_id: int) -> Path:
         async with async_session_factory() as db:
