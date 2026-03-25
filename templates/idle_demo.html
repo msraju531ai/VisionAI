@@ -62,7 +62,14 @@
       </div>
       <form class="form-grid" action="/demo/idle/schedule" method="post">
         <label>Employee
-          <select name="employee_id" required>
+          <select name="employee_id" required style="
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+">
             {% for e in employees %}
               <option value="{{ e.id }}">{{ e.name }} (#{{ e.id }})</option>
             {% endfor %}
@@ -84,8 +91,12 @@
     </section>
 
     <section class="panel">
-      <div class="panel-header">
+      <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center;">
         <h2>Processed Videos</h2>
+        <form action="/demo/idle/videos/clear" method="post"
+              onsubmit="return confirm('Delete ALL processed videos and their idle events?');">
+          <button type="submit" class="btn btn-danger btn-sm">Clear All</button>
+        </form>
       </div>
 
       <table class="events-table">
@@ -100,42 +111,57 @@
             <th>Idle Events</th>
             <th>Status</th>
             <th>Output</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
-          {% for v in videos %}
-          <tr>
-            <td>{{ v.id }}</td>
-            <td>{{ v.original_filename }}</td>
-            <td data-job-status="{{ v.id }}">{{ v.status }}</td>
-            <td data-processed="{{ v.id }}">{{ v.processed_frames }}</td>
-            <td data-started="{{ v.id }}">{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
-            <td data-finished="{{ v.id }}">{{ v.finished_at.strftime('%Y-%m-%d %H:%M:%S') if v.finished_at else '' }}</td>
-            <td>{{ (events_by_video.get(v.id) or [])|length }}</td>
-            <td data-outcome="{{ v.id }}">
-              {% if v.outcome_status == 'authorized' %}
-                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#19c37d;"></span>
-              {% elif v.outcome_status == 'unauthorized' %}
-                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#ef4444;"></span>
-              {% elif v.outcome_status == 'idle' %}
-                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#f59e0b;"></span>
-              {% endif %}
-            </td>
-            <td data-output="{{ v.id }}">
-              {% if v.output_video_path %}
-                <button
-                  type="button"
-                  class="btn btn-primary btn-sm"
-                  data-video-id="{{ v.id }}"
-                  data-filename="{{ v.original_filename }}"
-                  onclick="openOutputFromBtn(this)"
-                >
-                  View
-                </button>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
+          {% if videos %}
+            {% for v in videos %}
+            <tr>
+              <td>{{ v.id }}</td>
+              <td>{{ v.original_filename }}</td>
+              <td data-job-status="{{ v.id }}">{{ v.status }}</td>
+              <td data-processed="{{ v.id }}">{{ v.processed_frames }}</td>
+              <td data-started="{{ v.id }}">{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
+              <td data-finished="{{ v.id }}">{{ v.finished_at.strftime('%Y-%m-%d %H:%M:%S') if v.finished_at else '' }}</td>
+              <td>{{ (events_by_video.get(v.id) or [])|length }}</td>
+              <td data-outcome="{{ v.id }}">
+                {% if v.outcome_status == 'authorized' %}
+                  <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#19c37d;"></span>
+                {% elif v.outcome_status == 'unauthorized' %}
+                  <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#ef4444;"></span>
+                {% elif v.outcome_status == 'idle' %}
+                  <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#f59e0b;"></span>
+                {% endif %}
+              </td>
+              <td data-output="{{ v.id }}">
+                {% if v.output_video_path %}
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    data-video-id="{{ v.id }}"
+                    data-filename="{{ v.original_filename }}"
+                    onclick="openOutputFromBtn(this)"
+                  >
+                    View
+                  </button>
+                {% endif %}
+              </td>
+              <td>
+                <form action="/demo/idle/videos/{{ v.id }}/delete" method="post"
+                      onsubmit="return confirm('Delete video {{ v.original_filename }} and its idle events?');">
+                  <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="10" style="text-align:center; opacity:0.5; padding:20px 0;">
+                No videos processed yet. Use the form above to upload a video.
+              </td>
+            </tr>
+          {% endif %}
         </tbody>
       </table>
 

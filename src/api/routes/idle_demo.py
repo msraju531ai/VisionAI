@@ -296,6 +296,42 @@ async def idle_demo_status(db: AsyncSession = Depends(get_db)):
     return {"videos": out}
 
 
+def _safe_unlink(path_str: str | None, allowed_base: Path) -> None:
+    """Delete a file only if it resolves inside allowed_base."""
+    if not path_str:
+        return
+    try:
+        target = Path(path_str).resolve()
+        base = allowed_base.resolve()
+        if base in target.parents or base == target.parent:
+            target.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+@router.post("/demo/idle/videos/clear")
+async def clear_idle_videos(db: AsyncSession = Depends(get_db)):
+    videos = (await db.execute(select(IdleDemoVideo))).scalars().all()
+    for v in videos:
+        _safe_unlink(v.video_path, _VID_DIR)
+        _safe_unlink(v.output_video_path, _OUT_DIR)
+        await db.delete(v)
+    await db.commit()
+    return RedirectResponse(url="/demo/idle", status_code=303)
+
+
+@router.post("/demo/idle/videos/{video_id}/delete")
+async def delete_idle_video(video_id: int, db: AsyncSession = Depends(get_db)):
+    v = (await db.execute(select(IdleDemoVideo).where(IdleDemoVideo.id == video_id))).scalar_one_or_none()
+    if v is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    _safe_unlink(v.video_path, _VID_DIR)
+    _safe_unlink(v.output_video_path, _OUT_DIR)
+    await db.delete(v)
+    await db.commit()
+    return RedirectResponse(url="/demo/idle", status_code=303)
+
+
 @router.post("/demo/idle/schedule")
 async def upsert_idle_schedule(
     employee_id: int = Form(...),

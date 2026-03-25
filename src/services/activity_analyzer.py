@@ -27,7 +27,7 @@ class TrackedPerson:
         self.first_seen = timestamp
         self.positions: list[tuple[float, float, float]] = [(*detection.center, timestamp)]
         self._idle_start: Optional[float] = timestamp
-        self.movement_threshold = 30.0  # pixels
+        self.movement_threshold = 50.0  # pixels — raised to absorb YOLO bbox jitter
 
     def update(self, detection: Detection, timestamp: float) -> None:
         dx = abs(detection.center[0] - self.last_detection.center[0])
@@ -65,7 +65,7 @@ class ActivityAnalyzer:
         self._tracks: dict[int, dict[int, TrackedPerson]] = defaultdict(dict)
         self._next_id: int = 1
         self._max_age: float = 10.0  # seconds before a track is considered lost
-        self._match_distance: float = 80.0  # max pixel distance for matching
+        self._match_distance: float = 120.0  # max pixel distance for matching
 
     def update(
         self, camera_id: int, detections: list[Detection], timestamp: float
