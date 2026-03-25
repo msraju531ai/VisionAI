@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VisionAI — Idle Demo</title>
   <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    @keyframes _spin { to { transform: rotate(360deg); } }
+    .proc-spinner {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #2d9cdb;
+      border-radius: 50%;
+      animation: _spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+  </style>
 </head>
 <body>
   <nav class="navbar">
@@ -120,7 +133,10 @@
             <tr>
               <td>{{ v.id }}</td>
               <td>{{ v.original_filename }}</td>
-              <td data-job-status="{{ v.id }}">{{ v.status }}</td>
+              <td>
+                <span data-job-status="{{ v.id }}">{{ v.status }}</span>
+                <span data-idle-spinner="{{ v.id }}" class="proc-spinner" style="display:none;"></span>
+              </td>
               <td data-processed="{{ v.id }}">{{ v.processed_frames }}</td>
               <td data-started="{{ v.id }}">{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
               <td data-finished="{{ v.id }}">{{ v.finished_at.strftime('%Y-%m-%d %H:%M:%S') if v.finished_at else '' }}</td>
@@ -334,10 +350,15 @@
           const outcomeEl = document.querySelector(`[data-outcome="${v.id}"]`);
           const outputEl = document.querySelector(`[data-output="${v.id}"]`);
 
+          const spinnerEl = document.querySelector(`[data-idle-spinner="${v.id}"]`);
           if (jobEl) jobEl.textContent = v.status || '';
           if (processedEl) processedEl.textContent = v.processed_frames ?? '';
           if (startedEl) startedEl.textContent = fmtTs(v.started_at);
           if (finishedEl) finishedEl.textContent = fmtTs(v.finished_at);
+          if (spinnerEl) {
+            const active = (v.status === 'processing' || v.status === 'uploaded');
+            spinnerEl.style.display = active ? 'inline-block' : 'none';
+          }
           if (outcomeEl) outcomeEl.innerHTML = outcomeDot(v.outcome_status);
 
           if (outputEl && v.output_available) {
@@ -357,6 +378,15 @@
         // ignore
       }
     }
+
+    // Initialise spinners on page load
+    document.querySelectorAll('[data-idle-spinner]').forEach(el => {
+      const vid = el.dataset.idleSpinner;
+      const stEl = document.querySelector(`[data-job-status="${vid}"]`);
+      if (stEl && (stEl.textContent.trim() === 'processing' || stEl.textContent.trim() === 'uploaded')) {
+        el.style.display = 'inline-block';
+      }
+    });
 
     refreshIdleStatus();
     setInterval(refreshIdleStatus, 2000);

@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VisionAI — Employee Identification Demo</title>
   <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    @keyframes _spin { to { transform: rotate(360deg); } }
+    .proc-spinner {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #2d9cdb;
+      border-radius: 50%;
+      animation: _spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+  </style>
 </head>
 <body>
   <nav class="navbar">
@@ -42,7 +55,7 @@
         </div>
       </form>
 
-      <div style="margin-top:16px">
+      <div style="margin-top:16px" id="employees">
         <div class="panel-header" style="margin-bottom:8px;">
           <h3 style="margin:0;">Registered Employees</h3>
           <form action="/demo/employees/clear" method="post"
@@ -64,7 +77,7 @@
             {% if employees %}
               {% for e in employees %}
               <tr>
-                <td>{{ loop.index }}</td>
+                <td>{{ emp_offset + loop.index }}</td>
                 <td>
                   <img
                     src="/demo/employees/{{ e.id }}/photo?v={{ e.created_at.timestamp()|int }}"
@@ -91,10 +104,32 @@
             {% endif %}
           </tbody>
         </table>
+
+        {% if emp_total_pages > 1 %}
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px; align-items:center;">
+          {% set ecur = emp_page %}
+          {% set etotal = emp_total_pages %}
+
+          <a class="btn btn-sm" href="/demo?emp_page={{ 1 if ecur <= 1 else ecur - 1 }}&page={{ page }}#employees" style="text-decoration:none; color:var(--text);">&lt; previous</a>
+
+          {% set estart = 1 if ecur - 2 < 1 else ecur - 2 %}
+          {% set eend = etotal if ecur + 2 > etotal else ecur + 2 %}
+
+          {% for p in range(estart, eend + 1) %}
+            {% if p == ecur %}
+              <span class="btn btn-primary btn-sm" style="cursor:default; color:#fff;">{{ p }}</span>
+            {% else %}
+              <a class="btn btn-sm" href="/demo?emp_page={{ p }}&page={{ page }}#employees" style="text-decoration:none; color:var(--text);">{{ p }}</a>
+            {% endif %}
+          {% endfor %}
+
+          <a class="btn btn-sm" href="/demo?emp_page={{ etotal if ecur >= etotal else ecur + 1 }}&page={{ page }}#employees" style="text-decoration:none; color:var(--text);">next &gt;</a>
+        </div>
+        {% endif %}
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="video-upload">
       <div class="panel-header">
         <h2>Video Upload</h2>
       </div>
@@ -146,7 +181,10 @@
                 <td>{{ v.original_filename }}</td>
                 <td>
                   <div style="min-width:160px;">
-                    <div data-vid-status-text="{{ v.id }}">{{ v.status }}</div>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                      <span data-vid-status-text="{{ v.id }}">{{ v.status }}</span>
+                      <span data-vid-spinner="{{ v.id }}" class="proc-spinner" style="display:none;"></span>
+                    </div>
                     <div style="height:8px; background:rgba(255,255,255,0.12); border-radius:999px; overflow:hidden; margin-top:6px;">
                       <div data-vid-progress-bar="{{ v.id }}" data-vid-status-init="{{ v.status }}" style="height:100%; width:0%; background:#2d9cdb; transition:width 0.3s;"></div>
                     </div>
@@ -174,6 +212,28 @@
             {% endif %}
           </tbody>
         </table>
+
+        {% if vid_total_pages > 1 %}
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px; align-items:center;">
+          {% set vcur = vid_page %}
+          {% set vtotal = vid_total_pages %}
+
+          <a class="btn btn-sm" href="/demo?vid_page={{ 1 if vcur <= 1 else vcur - 1 }}&emp_page={{ emp_page }}&page={{ page }}#video-upload" style="text-decoration:none; color:var(--text);">&lt; previous</a>
+
+          {% set vstart = 1 if vcur - 2 < 1 else vcur - 2 %}
+          {% set vend = vtotal if vcur + 2 > vtotal else vcur + 2 %}
+
+          {% for p in range(vstart, vend + 1) %}
+            {% if p == vcur %}
+              <span class="btn btn-primary btn-sm" style="cursor:default; color:#fff;">{{ p }}</span>
+            {% else %}
+              <a class="btn btn-sm" href="/demo?vid_page={{ p }}&emp_page={{ emp_page }}&page={{ page }}#video-upload" style="text-decoration:none; color:var(--text);">{{ p }}</a>
+            {% endif %}
+          {% endfor %}
+
+          <a class="btn btn-sm" href="/demo?vid_page={{ vtotal if vcur >= vtotal else vcur + 1 }}&emp_page={{ emp_page }}&page={{ page }}#video-upload" style="text-decoration:none; color:var(--text);">next &gt;</a>
+        </div>
+        {% endif %}
       </div>
     </section>
 
@@ -348,13 +408,14 @@
     }
 
     function applyVideoProgress(v) {
-      const barEl   = document.querySelector(`[data-vid-progress-bar="${v.id}"]`);
-      const pctEl   = document.querySelector(`[data-vid-progress-text="${v.id}"]`);
-      const stEl    = document.querySelector(`[data-vid-status-text="${v.id}"]`);
-      const procEl  = document.querySelector(`[data-vid-processed="${v.id}"]`);
-      const startEl = document.querySelector(`[data-vid-started="${v.id}"]`);
-      const finEl   = document.querySelector(`[data-vid-finished="${v.id}"]`);
-      const errEl   = document.querySelector(`[data-vid-error="${v.id}"]`);
+      const barEl     = document.querySelector(`[data-vid-progress-bar="${v.id}"]`);
+      const pctEl     = document.querySelector(`[data-vid-progress-text="${v.id}"]`);
+      const stEl      = document.querySelector(`[data-vid-status-text="${v.id}"]`);
+      const spinnerEl = document.querySelector(`[data-vid-spinner="${v.id}"]`);
+      const procEl    = document.querySelector(`[data-vid-processed="${v.id}"]`);
+      const startEl   = document.querySelector(`[data-vid-started="${v.id}"]`);
+      const finEl     = document.querySelector(`[data-vid-finished="${v.id}"]`);
+      const errEl     = document.querySelector(`[data-vid-error="${v.id}"]`);
 
       if (!barEl || !pctEl) return;
 
@@ -373,7 +434,24 @@
       pct = Math.max(0, Math.min(100, pct));
       barEl.style.width = pct + '%';
       pctEl.textContent = pct + '%';
+
+      // Show spinner while processing and no progress yet; hide otherwise
+      if (spinnerEl) {
+        const active = (v.status === 'processing' || v.status === 'uploaded') && pct === 0;
+        spinnerEl.style.display = active ? 'inline-block' : 'none';
+      }
     }
+
+    // Initialise spinners on page load from server-rendered status
+    document.querySelectorAll('[data-vid-spinner]').forEach(el => {
+      const vid = el.dataset.vidSpinner;
+      const stEl = document.querySelector(`[data-vid-status-text="${vid}"]`);
+      const pctEl = document.querySelector(`[data-vid-progress-text="${vid}"]`);
+      if (stEl && (stEl.textContent.trim() === 'processing' || stEl.textContent.trim() === 'uploaded')) {
+        const pct = pctEl ? parseInt(pctEl.textContent, 10) : 0;
+        if (pct === 0) el.style.display = 'inline-block';
+      }
+    });
 
     // Initialise bars from server-rendered status on page load
     document.querySelectorAll('[data-vid-status-init]').forEach(el => {
@@ -386,13 +464,32 @@
       }
     });
 
+    // Track which videos were still processing on last poll
+    const _inProgress = new Set(
+      [...document.querySelectorAll('[data-vid-status-text]')]
+        .filter(el => el.textContent.trim() === 'processing' || el.textContent.trim() === 'uploaded')
+        .map(el => el.dataset.vidStatusText)
+    );
+
     async function refreshDemoVideos() {
       try {
         const res = await fetch('/demo/videos/status', { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
+        let anyNewlyCompleted = false;
         for (const v of (data.videos || [])) {
           applyVideoProgress(v);
+          if (_inProgress.has(String(v.id)) && v.status === 'completed') {
+            anyNewlyCompleted = true;
+          }
+          if (v.status === 'processing' || v.status === 'uploaded') {
+            _inProgress.add(String(v.id));
+          } else {
+            _inProgress.delete(String(v.id));
+          }
+        }
+        if (anyNewlyCompleted) {
+          window.location.reload();
         }
       } catch (_) {}
     }

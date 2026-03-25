@@ -19,7 +19,7 @@ class VideoDemoProcessor:
     def __init__(
         self,
         identifier: Optional[EmployeeIdentifier] = None,
-        frame_sample_interval_seconds: float = 1.0,
+        frame_sample_interval_seconds: float = 2.0,
         similarity_threshold: float = 0.6,
     ):
         self._identifier = identifier or EmployeeIdentifier()

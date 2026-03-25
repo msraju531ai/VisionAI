@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VisionAI — Unauthorized Entry</title>
   <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    @keyframes _spin { to { transform: rotate(360deg); } }
+    .proc-spinner {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #2d9cdb;
+      border-radius: 50%;
+      animation: _spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+  </style>
 </head>
 <body>
   <nav class="navbar">
@@ -79,7 +92,10 @@
             <td>{{ v.original_filename }}</td>
             <td>
               <div style="min-width:160px;">
-                <div data-status-text="{{ v.id }}">{{ v.status }}</div>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <span data-status-text="{{ v.id }}">{{ v.status }}</span>
+                  <span data-spinner="{{ v.id }}" class="proc-spinner" style="display:none;"></span>
+                </div>
                 <div style="height:8px; background:rgba(255,255,255,0.12); border-radius:999px; overflow:hidden; margin-top:6px;">
                   <div data-progress-bar="{{ v.id }}" style="height:100%; width:0%; background:#2d9cdb;"></div>
                 </div>
@@ -270,6 +286,7 @@
           const outcomeEl = document.querySelector(`[data-outcome="${v.id}"]`);
           const outputEl = document.querySelector(`[data-output="${v.id}"]`);
           const statusTextEl = document.querySelector(`[data-status-text="${v.id}"]`);
+          const spinnerEl    = document.querySelector(`[data-spinner="${v.id}"]`);
           const barEl = document.querySelector(`[data-progress-bar="${v.id}"]`);
           const pctEl = document.querySelector(`[data-progress-text="${v.id}"]`);
 
@@ -298,6 +315,11 @@
           barEl.style.width = pct + '%';
           pctEl.textContent = pct + '%';
 
+          if (spinnerEl) {
+            const active = (v.status === 'processing' || v.status === 'uploaded') && pct === 0;
+            spinnerEl.style.display = active ? 'inline-block' : 'none';
+          }
+
           if (outputEl && v.output_available) {
             if (!outputEl.querySelector('button')) {
               const btn = document.createElement('button');
@@ -315,6 +337,15 @@
         // ignore
       }
     }
+
+    // Initialise spinners on page load
+    document.querySelectorAll('[data-spinner]').forEach(el => {
+      const vid = el.dataset.spinner;
+      const stEl = document.querySelector(`[data-status-text="${vid}"]`);
+      if (stEl && (stEl.textContent.trim() === 'processing' || stEl.textContent.trim() === 'uploaded')) {
+        el.style.display = 'inline-block';
+      }
+    });
 
     refreshUnauthorizedStatus();
     setInterval(refreshUnauthorizedStatus, 2000);

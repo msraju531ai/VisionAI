@@ -68,11 +68,35 @@ async def demo_videos_status(db: AsyncSession = Depends(get_db)):
 async def demo_page(
     request: Request,
     page: int = Query(1, ge=1),
+    emp_page: int = Query(1, ge=1),
+    vid_page: int = Query(1, ge=1),
     db: AsyncSession = Depends(get_db),
 ):
     error = request.query_params.get("err")
-    employees = (await db.execute(select(Employee).order_by(Employee.created_at.desc()))).scalars().all()
-    videos = (await db.execute(select(DemoVideo).order_by(DemoVideo.created_at.desc()))).scalars().all()
+
+    # Employee pagination — 5 per page
+    emp_page_size = 5
+    emp_total = (await db.execute(select(func.count()).select_from(Employee))).scalar() or 0
+    emp_total_pages = max(1, (emp_total + emp_page_size - 1) // emp_page_size)
+    emp_page = min(emp_page, emp_total_pages)
+    emp_offset = (emp_page - 1) * emp_page_size
+    employees = (
+        await db.execute(
+            select(Employee).order_by(Employee.created_at.desc()).offset(emp_offset).limit(emp_page_size)
+        )
+    ).scalars().all()
+
+    # Video pagination — 5 per page
+    vid_page_size = 5
+    vid_total = (await db.execute(select(func.count()).select_from(DemoVideo))).scalar() or 0
+    vid_total_pages = max(1, (vid_total + vid_page_size - 1) // vid_page_size)
+    vid_page = min(vid_page, vid_total_pages)
+    vid_offset = (vid_page - 1) * vid_page_size
+    videos = (
+        await db.execute(
+            select(DemoVideo).order_by(DemoVideo.created_at.desc()).offset(vid_offset).limit(vid_page_size)
+        )
+    ).scalars().all()
 
     page_size = 10
     ranked = (
@@ -127,6 +151,12 @@ async def demo_page(
             "detections": detections,
             "page": page,
             "total_pages": total_pages,
+            "emp_page": emp_page,
+            "emp_total_pages": emp_total_pages,
+            "emp_offset": emp_offset,
+            "vid_page": vid_page,
+            "vid_total_pages": vid_total_pages,
+            "vid_offset": vid_offset,
         },
     )
 
@@ -347,4 +377,4 @@ async def upload_video(
 
     _processor.start_background(demo_video.id)
 
-    return RedirectResponse(url="/demo", status_code=303)
+    return RedirectResponse(url="/demo#video-upload", status_code=303)
