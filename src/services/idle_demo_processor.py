@@ -35,7 +35,7 @@ class IdleDemoProcessor:
         person_detector: Optional[PersonDetector] = None,
         activity_analyzer: Optional[ActivityAnalyzer] = None,
         frame_sample_interval_seconds: float = 1.0,
-        similarity_threshold: float = 0.6,
+        similarity_threshold: float = 0.5,
     ):
         self._identifier = identifier or EmployeeIdentifier()
         self._person_detector = person_detector or PersonDetector()
@@ -81,6 +81,7 @@ class IdleDemoProcessor:
         writer: Optional[cv2.VideoWriter] = None
 
         track_identities: dict[int, _TrackIdentity] = {}
+        track_id_attempts: dict[int, int] = {}   # failed face-detection attempts per track
         idle_open: dict[int, float] = {}
         any_person_seen = False
         any_unauthorized_seen = False
@@ -140,7 +141,15 @@ class IdleDemoProcessor:
 
                 # Assign identity to tracks (best-effort) using face crop
                 for tr in tracks:
-                    if tr.person_id in track_identities:
+                    # Already positively identified — skip
+                    if (tr.person_id in track_identities
+                            and track_identities[tr.person_id].employee_id is not None):
+                        continue
+
+                    attempts = track_id_attempts.get(tr.person_id, 0)
+                    # Give up after 5 failed attempts UNLESS the person is idle
+                    # (idle = standing still → better chance of a clear face shot)
+                    if attempts >= 5 and not tr.is_idle:
                         continue
 
                     d = tr.last_detection
@@ -153,23 +162,34 @@ class IdleDemoProcessor:
                         continue
 
                     ph, pw = person_crop.shape[:2]
-                    face_crop = person_crop[0 : max(1, int(ph * 0.6)), :]
+                    # Try top 50% first (face region), then full crop as fallback
+                    face_crop = person_crop[0 : max(1, int(ph * 0.5)), :]
 
+                    face_detected = False
                     identity = _TrackIdentity(employee_id=None, employee_name="Unauthorized", confidence=None)
+
                     if employees:
-                        emb_res = self._identifier.detect_and_embed(face_crop)
-                        if emb_res is not None:
-                            match = self._identifier.match_employee(
-                                emb_res.embedding,
-                                employees,
-                                threshold=self._similarity_threshold,
-                            )
+                        for crop in (face_crop, person_crop):
+                            emb_res = self._identifier.detect_and_embed(crop)
+                            if emb_res is not None:
+                                face_detected = True
+                                match = self._identifier.match_employee(
+                                    emb_res.embedding,
+                                    employees,
+                                    threshold=self._similarity_threshold,
+                                )
+                                if match is not None:
+                                    emp_id, emp_name, score = match
+                                    identity = _TrackIdentity(employee_id=emp_id, employee_name=emp_name, confidence=score)
+                                break
 
-                            if match is not None:
-                                emp_id, emp_name, score = match
-                                identity = _TrackIdentity(employee_id=emp_id, employee_name=emp_name, confidence=score)
-
-                    track_identities[tr.person_id] = identity
+                    if face_detected:
+                        track_identities[tr.person_id] = identity
+                    else:
+                        track_id_attempts[tr.person_id] = attempts + 1
+                        # After 5 failures and not idle → give up, mark Unauthorized
+                        if attempts + 1 >= 5 and not tr.is_idle:
+                            track_identities[tr.person_id] = identity
 
                 # Draw tracks with color rules
                 current_boxes: list[tuple[int, int, int, int, tuple, str]] = []
@@ -182,13 +202,14 @@ class IdleDemoProcessor:
 
                     identity = track_identities.get(tr.person_id)
                     is_authorized = bool(identity is not None and identity.employee_id is not None)
+                    is_identified = identity is not None  # face was detected (matched or not)
 
-                    if not is_authorized:
+                    if is_identified and not is_authorized:
                         any_unauthorized_seen = True
 
-                    # Default colors
+                    # Default: identity still pending (not yet determined)
                     color = (0, 0, 255)  # red
-                    label = "Unauthorized"
+                    label = "Identifying..." if not is_identified else "Unauthorized"
 
                     if is_authorized:
                         color = (0, 200, 0)  # green
@@ -201,7 +222,12 @@ class IdleDemoProcessor:
                     if tr.is_idle:
                         any_idle_seen = True
                         color = (0, 215, 255)  # yellow-ish (BGR)
-                        label = f"Idle: {label}"
+                        if not is_identified:
+                            label = "Idle"              # still identifying
+                        elif is_authorized:
+                            label = f"Idle: {label}"    # "Idle: EmployeeName (0.85)"
+                        else:
+                            label = "Idle: Unauthorized"
 
                         if tr.person_id not in idle_open:
                             idle_open[tr.person_id] = t_seconds

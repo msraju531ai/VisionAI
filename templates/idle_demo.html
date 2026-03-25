@@ -117,8 +117,8 @@
           <tr>
             <th>ID</th>
             <th>Video</th>
-            <th>Job</th>
-            <th>Processed Frames</th>
+            <th>Progress</th>
+            <th>Frames Sampled</th>
             <th>Started</th>
             <th>Finished</th>
             <th>Idle Events</th>
@@ -134,8 +134,16 @@
               <td>{{ v.id }}</td>
               <td>{{ v.original_filename }}</td>
               <td>
-                <span data-job-status="{{ v.id }}">{{ v.status }}</span>
-                <span data-idle-spinner="{{ v.id }}" class="proc-spinner" style="display:none;"></span>
+                <div style="min-width:160px;">
+                  <div style="display:flex; align-items:center; gap:4px;">
+                    <span data-job-status="{{ v.id }}">{{ v.status }}</span>
+                    <span data-idle-spinner="{{ v.id }}" class="proc-spinner" style="display:none;"></span>
+                  </div>
+                  <div style="height:8px; background:rgba(255,255,255,0.12); border-radius:999px; overflow:hidden; margin-top:6px;">
+                    <div data-idle-progress-bar="{{ v.id }}" style="height:100%; width:0%; background:#2d9cdb; transition:width 0.3s;"></div>
+                  </div>
+                  <div data-idle-progress-text="{{ v.id }}" style="font-size:12px; opacity:0.9; margin-top:4px;">0%</div>
+                </div>
               </td>
               <td data-processed="{{ v.id }}">{{ v.processed_frames }}</td>
               <td data-started="{{ v.id }}">{{ v.started_at.strftime('%Y-%m-%d %H:%M:%S') if v.started_at else '' }}</td>
@@ -180,6 +188,28 @@
           {% endif %}
         </tbody>
       </table>
+
+      {% if vid_total_pages > 1 %}
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px; align-items:center;">
+        {% set vcur = vid_page %}
+        {% set vtotal = vid_total_pages %}
+
+        <a class="btn btn-sm" href="/demo/idle?vid_page={{ 1 if vcur <= 1 else vcur - 1 }}" style="text-decoration:none; color:var(--text);">&lt; previous</a>
+
+        {% set vstart = 1 if vcur - 2 < 1 else vcur - 2 %}
+        {% set vend = vtotal if vcur + 2 > vtotal else vcur + 2 %}
+
+        {% for p in range(vstart, vend + 1) %}
+          {% if p == vcur %}
+            <span class="btn btn-primary btn-sm" style="cursor:default; color:#fff;">{{ p }}</span>
+          {% else %}
+            <a class="btn btn-sm" href="/demo/idle?vid_page={{ p }}" style="text-decoration:none; color:var(--text);">{{ p }}</a>
+          {% endif %}
+        {% endfor %}
+
+        <a class="btn btn-sm" href="/demo/idle?vid_page={{ vtotal if vcur >= vtotal else vcur + 1 }}" style="text-decoration:none; color:var(--text);">next &gt;</a>
+      </div>
+      {% endif %}
 
       <div style="margin-top:10px; opacity:0.9;">
         <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:#19c37d;"></span>
@@ -350,13 +380,27 @@
           const outcomeEl = document.querySelector(`[data-outcome="${v.id}"]`);
           const outputEl = document.querySelector(`[data-output="${v.id}"]`);
 
-          const spinnerEl = document.querySelector(`[data-idle-spinner="${v.id}"]`);
+          const spinnerEl  = document.querySelector(`[data-idle-spinner="${v.id}"]`);
+          const barEl      = document.querySelector(`[data-idle-progress-bar="${v.id}"]`);
+          const pctEl      = document.querySelector(`[data-idle-progress-text="${v.id}"]`);
+
           if (jobEl) jobEl.textContent = v.status || '';
           if (processedEl) processedEl.textContent = v.processed_frames ?? '';
           if (startedEl) startedEl.textContent = fmtTs(v.started_at);
           if (finishedEl) finishedEl.textContent = fmtTs(v.finished_at);
+
+          let pct = 0;
+          if (v.status === 'completed') {
+            pct = 100;
+          } else if (v.total_samples && v.total_samples > 0) {
+            pct = Math.floor((Number(v.processed_frames || 0) / Number(v.total_samples)) * 100);
+          }
+          pct = Math.max(0, Math.min(100, pct));
+          if (barEl) barEl.style.width = pct + '%';
+          if (pctEl) pctEl.textContent = pct + '%';
+
           if (spinnerEl) {
-            const active = (v.status === 'processing' || v.status === 'uploaded');
+            const active = (v.status === 'processing' || v.status === 'uploaded') && pct === 0;
             spinnerEl.style.display = active ? 'inline-block' : 'none';
           }
           if (outcomeEl) outcomeEl.innerHTML = outcomeDot(v.outcome_status);

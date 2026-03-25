@@ -5,10 +5,10 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.db_session import get_db
@@ -93,9 +93,24 @@ def _range_stream(request: Request, file_path: Path, media_type: str):
 
 
 @router.get("/demo/idle", response_class=HTMLResponse)
-async def idle_demo_page(request: Request, db: AsyncSession = Depends(get_db)):
+async def idle_demo_page(
+    request: Request,
+    vid_page: int = Query(1, ge=1),
+    db: AsyncSession = Depends(get_db),
+):
     error = request.query_params.get("err")
-    videos = (await db.execute(select(IdleDemoVideo).order_by(IdleDemoVideo.created_at.desc()))).scalars().all()
+
+    # Video pagination — 5 per page
+    vid_page_size = 5
+    vid_total = (await db.execute(select(func.count()).select_from(IdleDemoVideo))).scalar() or 0
+    vid_total_pages = max(1, (vid_total + vid_page_size - 1) // vid_page_size)
+    vid_page = min(vid_page, vid_total_pages)
+    vid_offset = (vid_page - 1) * vid_page_size
+    videos = (
+        await db.execute(
+            select(IdleDemoVideo).order_by(IdleDemoVideo.created_at.desc()).offset(vid_offset).limit(vid_page_size)
+        )
+    ).scalars().all()
 
     employees = (await db.execute(select(Employee).order_by(Employee.name.asc()))).scalars().all()
     schedules = {
@@ -162,6 +177,8 @@ async def idle_demo_page(request: Request, db: AsyncSession = Depends(get_db)):
             "schedules": schedules,
             "events_by_video": events_by_video,
             "compliance_by_video": compliance_by_video,
+            "vid_page": vid_page,
+            "vid_total_pages": vid_total_pages,
         },
     )
 
