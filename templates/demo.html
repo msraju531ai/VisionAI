@@ -67,6 +67,7 @@
           <thead>
             <tr>
               <th>SNO</th>
+              <th>Employee ID</th>
               <th>Photo</th>
               <th>Name</th>
               <th>Created</th>
@@ -78,6 +79,7 @@
               {% for e in employees %}
               <tr>
                 <td>{{ emp_offset + loop.index }}</td>
+                <td>{{ 100 + e.id }}</td>
                 <td>
                   <img
                     src="/demo/employees/{{ e.id }}/photo?v={{ e.created_at.timestamp()|int }}"
@@ -97,7 +99,7 @@
               {% endfor %}
             {% else %}
               <tr>
-                <td colspan="5" style="text-align:center; opacity:0.5; padding:20px 0;">
+                <td colspan="6" style="text-align:center; opacity:0.5; padding:20px 0;">
                   No employees registered yet. Use the form above to register your first employee.
                 </td>
               </tr>
@@ -157,7 +159,7 @@
           <h3 style="margin:0;">Uploaded Videos</h3>
           <form action="/demo/videos/clear" method="post"
                 onsubmit="return confirm('Delete ALL videos and their detections?');">
-            <!-- <button type="submit" class="btn btn-danger btn-sm">Remove All</button> -->
+            <button type="submit" class="btn btn-danger btn-sm">Clear All</button>
           </form>
         </div>
         <table class="events-table">
@@ -248,11 +250,12 @@
       <table class="events-table">
         <thead>
           <tr>
-            <th>Time</th>
-            <th>Employee</th>
-            <th>Video</th>
-            <th>Timestamp (s)</th>
+            <th>Employee ID</th>
+            <th>Employee Name</th>
+            <th>Detection Time</th>
+            <th>Video Timestamp (s)</th>
             <th>Confidence</th>
+            <th>Video</th>
             <th>Clip</th>
           </tr>
         </thead>
@@ -260,11 +263,12 @@
           {% if detections %}
             {% for d in detections %}
             <tr>
-              <td>{{ d.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+              <td>{{ d.employee_id }}</td>
               <td>{{ d.employee_name }}</td>
-              <td>#{{ d.video_id }} — {{ d.video_filename }}</td>
+              <td>{{ d.detection_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
               <td>{{ '%.2f'|format(d.timestamp_seconds) }}</td>
               <td>{{ '%.3f'|format(d.confidence) }}</td>
+              <td>#{{ d.video_id }} — {{ d.video_filename }}</td>
               <td>
                 <button
                   type="button"
@@ -280,7 +284,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="6" style="text-align:center; opacity:0.5; padding:20px 0;">
+              <td colspan="7" style="text-align:center; opacity:0.5; padding:20px 0;">
                 No detections yet. Upload a video and register employees to see results here.
               </td>
             </tr>
@@ -464,14 +468,18 @@
       }
     });
 
-    // Track which videos were still processing on last poll
+    // Track which videos were still processing on page load
     const _inProgress = new Set(
       [...document.querySelectorAll('[data-vid-status-text]')]
         .filter(el => el.textContent.trim() === 'processing' || el.textContent.trim() === 'uploaded')
         .map(el => el.dataset.vidStatusText)
     );
 
+    let _pollActive = false;
+
     async function refreshDemoVideos() {
+      if (_pollActive) return;   // prevent overlapping calls
+      _pollActive = true;
       try {
         const res = await fetch('/demo/videos/status', { cache: 'no-store' });
         if (!res.ok) return;
@@ -490,12 +498,23 @@
         }
         if (anyNewlyCompleted) {
           window.location.reload();
+          return;
         }
-      } catch (_) {}
+      } catch (_) {
+      } finally {
+        _pollActive = false;
+      }
+
+      // Only schedule next poll if there are still videos in progress
+      if (_inProgress.size > 0) {
+        setTimeout(refreshDemoVideos, 2000);
+      }
     }
 
-    refreshDemoVideos();
-    setInterval(refreshDemoVideos, 2000);
+    // Only start polling if there are videos in progress
+    if (_inProgress.size > 0) {
+      refreshDemoVideos();
+    }
   </script>
 </body>
 </html>

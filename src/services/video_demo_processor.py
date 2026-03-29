@@ -13,16 +13,19 @@ from src.models.db_session import async_session_factory
 from src.models.database import DemoVideo, DemoDetection, Employee
 from src.services.employee_identifier import EmployeeIdentifier
 from src.services.centralized_detection_service import CentralizedDetectionService
+from src.services.person_detector import PersonDetector
 
 
 class VideoDemoProcessor:
     def __init__(
         self,
         identifier: Optional[EmployeeIdentifier] = None,
+        person_detector: Optional[PersonDetector] = None,
         frame_sample_interval_seconds: float = 2.0,
-        similarity_threshold: float = 0.6,
+        similarity_threshold: float = 0.70,
     ):
         self._identifier = identifier or EmployeeIdentifier()
+        self._person_detector = person_detector or PersonDetector()
         self._frame_sample_interval_seconds = frame_sample_interval_seconds
         self._similarity_threshold = similarity_threshold
         self._central = CentralizedDetectionService(dedup_seconds=60)
@@ -83,6 +86,13 @@ class VideoDemoProcessor:
 
             frame_index = 0
             processed = 0
+            # Centroid cache: once an employee is matched, carry their identity
+            # forward so face detection isn't needed on every single frame.
+            # list of (cx, cy, emp_id, score)
+            authorized_cache: list[tuple[float, float, int, float]] = []
+            _CACHE_DIST = 100.0  # pixels
+            # One detection record per employee per video — reset for each new video
+            saved_this_video: set[int] = set()
 
             while True:
                 ok, frame = cap.read()
@@ -94,16 +104,60 @@ class VideoDemoProcessor:
                     continue
 
                 timestamp_seconds = frame_index / fps if fps > 0 else 0.0
+                h_frame, w_frame = frame.shape[:2]
 
-                res = self._identifier.detect_and_embed(frame)
-                if res is not None:
-                    match = self._identifier.match_employee(
-                        res.embedding,
-                        employees,
-                        threshold=self._similarity_threshold,
-                    )
-                    if match is not None:
-                        emp_id, _, score = match
+                # Step 1: detect all persons with YOLO
+                detections = self._person_detector.detect(frame, person_only=True)
+
+                new_authorized_cache: list[tuple[float, float, int, float]] = []
+
+                for d in detections:
+                    x1 = max(0, min(w_frame - 1, int(d.x1)))
+                    y1 = max(0, min(h_frame - 1, int(d.y1)))
+                    x2 = max(0, min(w_frame, int(d.x2)))
+                    y2 = max(0, min(h_frame, int(d.y2)))
+                    if x2 <= x1 or y2 <= y1:
+                        continue
+
+                    cx = (x1 + x2) / 2.0
+                    cy = (y1 + y2) / 2.0
+
+                    emp_id: Optional[int] = None
+                    score: Optional[float] = None
+
+                    # Step 2: check centroid cache first
+                    for prev_cx, prev_cy, prev_id, prev_score in authorized_cache:
+                        dist = ((cx - prev_cx) ** 2 + (cy - prev_cy) ** 2) ** 0.5
+                        if dist <= _CACHE_DIST:
+                            emp_id = prev_id
+                            score = prev_score
+                            break
+
+                    # Step 3: run DeepFace on face crop only (top 50% of bbox)
+                    if emp_id is None and employees:
+                        person_crop = frame[y1:y2, x1:x2]
+                        if person_crop.size > 0:
+                            ph = person_crop.shape[0]
+                            face_crop = person_crop[0 : max(1, int(ph * 0.50)), :]
+
+                            emb_res = self._identifier.detect_and_embed(face_crop)
+                            if emb_res is not None:
+                                match = self._identifier.match_employee(
+                                    emb_res.embedding,
+                                    employees,
+                                    threshold=self._similarity_threshold,
+                                )
+                                if match is not None:
+                                    emp_id, _, score = match
+
+                    if emp_id is not None and score is not None:
+                        new_authorized_cache.append((cx, cy, emp_id, score))
+
+                        # Skip if this employee was already recorded in this video
+                        if emp_id in saved_this_video:
+                            continue
+                        saved_this_video.add(emp_id)
+
                         fut = asyncio.run_coroutine_threadsafe(
                             self._save_detection(
                                 demo_video_id=demo_video_id,
@@ -111,7 +165,7 @@ class VideoDemoProcessor:
                                 timestamp_seconds=timestamp_seconds,
                                 confidence=score,
                                 frame_index=frame_index,
-                                metadata={"bbox_xywh": list(res.bbox_xywh)},
+                                metadata={"bbox": [x1, y1, x2, y2]},
                             ),
                             loop,
                         )
@@ -128,6 +182,8 @@ class VideoDemoProcessor:
                             loop,
                         )
                         fut.result(timeout=30)
+
+                authorized_cache = new_authorized_cache if new_authorized_cache else authorized_cache
 
                 processed += 1
                 if processed % 25 == 0:

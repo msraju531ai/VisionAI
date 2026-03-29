@@ -35,7 +35,7 @@ class IdleDemoProcessor:
         person_detector: Optional[PersonDetector] = None,
         activity_analyzer: Optional[ActivityAnalyzer] = None,
         frame_sample_interval_seconds: float = 1.0,
-        similarity_threshold: float = 0.5,
+        similarity_threshold: float = 0.70,
     ):
         self._identifier = identifier or EmployeeIdentifier()
         self._person_detector = person_detector or PersonDetector()
@@ -162,26 +162,25 @@ class IdleDemoProcessor:
                         continue
 
                     ph, pw = person_crop.shape[:2]
-                    # Try top 50% first (face region), then full crop as fallback
-                    face_crop = person_crop[0 : max(1, int(ph * 0.5)), :]
+                    # Use only top 50% of bounding box (face region) — avoid
+                    # body/torso embeddings that cause false-positive matches
+                    face_crop = person_crop[0 : max(1, int(ph * 0.50)), :]
 
                     face_detected = False
                     identity = _TrackIdentity(employee_id=None, employee_name="Unauthorized", confidence=None)
 
                     if employees:
-                        for crop in (face_crop, person_crop):
-                            emb_res = self._identifier.detect_and_embed(crop)
-                            if emb_res is not None:
-                                face_detected = True
-                                match = self._identifier.match_employee(
-                                    emb_res.embedding,
-                                    employees,
-                                    threshold=self._similarity_threshold,
-                                )
-                                if match is not None:
-                                    emp_id, emp_name, score = match
-                                    identity = _TrackIdentity(employee_id=emp_id, employee_name=emp_name, confidence=score)
-                                break
+                        emb_res = self._identifier.detect_and_embed(face_crop)
+                        if emb_res is not None:
+                            face_detected = True
+                            match = self._identifier.match_employee(
+                                emb_res.embedding,
+                                employees,
+                                threshold=self._similarity_threshold,
+                            )
+                            if match is not None:
+                                emp_id, emp_name, score = match
+                                identity = _TrackIdentity(employee_id=emp_id, employee_name=emp_name, confidence=score)
 
                     if face_detected:
                         track_identities[tr.person_id] = identity

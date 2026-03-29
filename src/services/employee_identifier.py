@@ -33,14 +33,17 @@ class EmployeeIdentifier:
             cls._deepface = DeepFace
         return cls._deepface
 
+    # Minimum face detection confidence accepted.
+    # Below this value the face crop is too unclear (occlusion, side-on, blur)
+    # and the resulting embedding causes false-positive employee matches.
+    MIN_FACE_CONFIDENCE: float = 0.7
+
     def detect_and_embed(self, bgr_image: np.ndarray) -> Optional[FaceEmbeddingResult]:
         if bgr_image is None or bgr_image.size == 0:
             return None
 
         try:
             DeepFace = self._get_deepface()
-            # DeepFace expects BGR or RGB; pass enforce_detection=False so it
-            # doesn't raise when no face is found.
             results = DeepFace.represent(
                 img_path=bgr_image,
                 model_name=self._model_name,
@@ -50,23 +53,24 @@ class EmployeeIdentifier:
             if not results:
                 return None
 
-            # Pick the highest-confidence (or largest) face
+            # Pick the highest-confidence face
             best = max(results, key=lambda r: r.get("face_confidence", 0.0))
+            face_conf = best.get("face_confidence", 0.0)
 
-            if best.get("face_confidence", 1.0) == 0.0 and len(results) == 1:
-                # enforce_detection=False can return a zero-confidence result
-                # when no face was actually detected — skip it
-                fa = best.get("facial_area", {})
-                # If the facial area covers the entire image it's a fallback; accept it
-                # only if the image itself looks like a face (small crop passed in)
+            if face_conf == 0.0:
+                # No face detected — allow only when the entire image IS the face
+                # (small tight face crops from registration photos).
                 ih, iw = bgr_image.shape[:2]
+                fa = best.get("facial_area", {})
                 fa_w = fa.get("w", 0)
                 fa_h = fa.get("h", 0)
-                if fa_w >= iw * 0.95 and fa_h >= ih * 0.95:
-                    # whole-image fallback on a face crop — accept
-                    pass
+                if fa_w >= iw * 0.90 and fa_h >= ih * 0.90 and iw <= 256 and ih <= 256:
+                    pass  # accept tight face-only crop
                 else:
                     return None
+            elif face_conf < self.MIN_FACE_CONFIDENCE:
+                # Face detected but confidence too low — reject to avoid false positives
+                return None
 
             emb = best["embedding"]
             fa = best.get("facial_area", {})

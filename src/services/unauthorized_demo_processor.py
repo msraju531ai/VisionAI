@@ -23,7 +23,7 @@ class UnauthorizedDemoProcessor:
         identifier: Optional[EmployeeIdentifier] = None,
         person_detector: Optional[PersonDetector] = None,
         frame_sample_interval_seconds: float = 1.0,
-        similarity_threshold: float = 0.6,
+        similarity_threshold: float = 0.70,
     ):
         self._identifier = identifier or EmployeeIdentifier()
         self._person_detector = person_detector or PersonDetector()
@@ -91,8 +91,15 @@ class UnauthorizedDemoProcessor:
             processed = 0
             unauthorized_event_saved = False
             any_person_seen = False
+            any_authorized_seen = False
+            any_confirmed_unauthorized = False  # face detected + no employee match
             # Persist last known boxes so every frame (sampled or not) is annotated
             last_boxes: list[tuple[int, int, int, int, tuple, str]] = []
+            # Authorized centroid cache: (cx, cy, emp_name, score)
+            # Once a person is confirmed authorized, nearby detections in future
+            # frames inherit that identity without re-running DeepFace.
+            authorized_cache: list[tuple[float, float, str, float]] = []
+            _AUTH_CACHE_DIST = 100.0  # pixels
 
             while True:
                 ok, frame = cap.read()
@@ -115,6 +122,7 @@ class UnauthorizedDemoProcessor:
                     any_person_seen = True
 
                 current_boxes: list[tuple[int, int, int, int, tuple, str]] = []
+                new_authorized_cache: list[tuple[float, float, str, float]] = []
 
                 for d in detections:
                     x1, y1, x2, y2 = self._clip_bbox(frame, d)
@@ -125,17 +133,36 @@ class UnauthorizedDemoProcessor:
                     if person_crop.size == 0:
                         continue
 
-                    ph, pw = person_crop.shape[:2]
-                    face_crop = person_crop[0 : max(1, int(ph * 0.6)), :]
+                    # Centroid of this detection
+                    cx = (x1 + x2) / 2.0
+                    cy = (y1 + y2) / 2.0
 
                     authorized = False
                     label = "Unauthorized"
                     color = (0, 0, 255)  # red
                     best_score: Optional[float] = None
 
-                    if employees:
+                    # ── Step 1: check proximity cache ──────────────────────────
+                    # If this person was authorized in a recent frame and hasn't
+                    # moved far, inherit that identity without re-running DeepFace.
+                    for prev_cx, prev_cy, prev_name, prev_score in authorized_cache:
+                        dist = ((cx - prev_cx) ** 2 + (cy - prev_cy) ** 2) ** 0.5
+                        if dist <= _AUTH_CACHE_DIST:
+                            authorized = True
+                            best_score = prev_score
+                            label = f"{prev_name} ({prev_score:.2f})"
+                            color = (0, 200, 0)  # green
+                            break
+
+                    # ── Step 2: run DeepFace on face crop only (top 50% of bbox) ──
+                    face_detected = False
+                    if not authorized and employees:
+                        ph, pw = person_crop.shape[:2]
+                        face_crop = person_crop[0 : max(1, int(ph * 0.50)), :]
+
                         emb_res = self._identifier.detect_and_embed(face_crop)
                         if emb_res is not None:
+                            face_detected = True
                             match = self._identifier.match_employee(
                                 emb_res.embedding,
                                 employees,
@@ -147,6 +174,14 @@ class UnauthorizedDemoProcessor:
                                 best_score = score
                                 label = f"{emp_name} ({score:.2f})"
                                 color = (0, 200, 0)  # green
+                            else:
+                                # Face clearly detected but not in employee DB
+                                any_confirmed_unauthorized = True
+
+                    # ── Step 3: update authorized cache for next frame ─────────
+                    if authorized and best_score is not None:
+                        new_authorized_cache.append((cx, cy, label.split(" (")[0], best_score))
+                        any_authorized_seen = True
 
                     current_boxes.append((x1, y1, x2, y2, color, label))
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -161,7 +196,10 @@ class UnauthorizedDemoProcessor:
                         cv2.LINE_AA,
                     )
 
-                    if (not authorized) and (not unauthorized_event_saved):
+                    # Only save an unauthorized event when face was positively
+                    # detected but didn't match any employee — not when face
+                    # detection simply failed (bad angle, occlusion, etc.)
+                    if face_detected and (not authorized) and (not unauthorized_event_saved):
                         timestamp_seconds = frame_index / fps if fps > 0 else 0.0
                         fut = asyncio.run_coroutine_threadsafe(
                             self._save_unauthorized_event(
@@ -174,6 +212,10 @@ class UnauthorizedDemoProcessor:
                         )
                         fut.result(timeout=30)
                         unauthorized_event_saved = True
+
+                # Carry forward authorized cache; keep previous entries too so
+                # a brief occlusion (1-2 frames) doesn't drop the identity.
+                authorized_cache = new_authorized_cache if new_authorized_cache else authorized_cache
 
                 last_boxes = current_boxes
                 self._write_frame(ffmpeg_proc, writer, frame)
@@ -188,11 +230,18 @@ class UnauthorizedDemoProcessor:
             fut = asyncio.run_coroutine_threadsafe(self._update_progress(demo_video_id, processed), loop)
             fut.result(timeout=30)
 
-            outcome = "authorized"
             if not any_person_seen:
                 outcome = "idle"
-            elif unauthorized_event_saved:
+            elif any_confirmed_unauthorized:
+                # At least one face was detected and confirmed not an employee
                 outcome = "unauthorized"
+            elif any_authorized_seen:
+                # All detected persons matched registered employees
+                outcome = "authorized"
+            else:
+                # Persons seen but no face detected (angle/quality) — treat as authorized
+                # since no intruder was confirmed
+                outcome = "authorized"
             fut = asyncio.run_coroutine_threadsafe(self._set_outcome_status(demo_video_id, outcome), loop)
             fut.result(timeout=30)
 
